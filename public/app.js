@@ -3,7 +3,7 @@ import {
   evaluateScan,
   productNdc,
 } from "./recognition-core.js";
-import { recognizePhoto } from "./recognition.js";
+import { recognizePhoto, loadRecognition, modelStatus, onModelStatus } from "./recognition.js";
 import { lucide } from "./icons.js";
 import {
   SLOTS,
@@ -406,6 +406,12 @@ function resultHtml(meds) {
 <div class="actions-row">${logAction}<div class="btn-pair">${button("Retake", "retake", "block", "camera")}${identifyOnly ? "" : button("Flag a problem", "log-concern", "block", "triangle-alert")}</div></div>
 <p class="research-note">${esc(resultNote)}</p>`;
 }
+// Shown on the idle Scan screen while the one-time model download is running.
+function modelStatusHtml() {
+  if (modelStatus.state !== "loading") return "";
+  const pct = Math.min(99, Math.round((modelStatus.loaded / modelStatus.total) * 100));
+  return `<div class="section notice blue model-status" id="model-status" role="status"><div class="grow"><b>Getting the scan model ready</b><p id="model-status-text">${esc(modelStatus.message)}</p><progress max="100" value="${modelStatus.loaded ? pct : 0}" aria-label="Model download"></progress><p class="small muted">One-time download. It stays on this device afterward.</p></div></div>`;
+}
 function checkPage() {
   const p = patient(),
     meds = dosesFor(p, selectedSlot),
@@ -427,7 +433,7 @@ function checkPage() {
   else
     body = `<div class="viewfinder" id="dropzone"><span class="corners"></span><span class="hint">${icon("camera")}<b>${p.demo ? "Tap the camera to scan a sample dose" : scanMode === "single" ? "Fill the frame with one pill" : "Spread pills on a plain surface"}</b><span>${p.demo ? "No real camera needed in the demo" : "Imprints up, good light"}</span></span></div>
 ${p.demo ? `<div class="section tight"><div class="section-head"><h2>No pills handy? Try a sample</h2></div><div class="list"><button class="row" data-sample="correct"><span class="ico-tile t-green">${icon("check")}</span><span class="grow"><span class="row-title">Correct morning dose</span><br><span class="row-sub">Two pills that match the plan</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-sample="wrong"><span class="ico-tile t-orange">${icon("triangle-alert")}</span><span class="grow"><span class="row-title">Wrong pill in the dose</span><br><span class="row-sub">A pill that isn’t in the morning plan</span></span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Research photos from the ePillID dataset, scanned by the real on-device model.</p></div>` : ""}
-${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
+${modelStatusHtml()}${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
 <div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="${p.demo ? "demo-scan" : "start-camera"}" aria-label="${p.demo ? "Scan a sample photo" : "Start camera"}">${icon("camera")}</button><span class="side-action" aria-hidden="true"></span></div>${modeToggle}
 
 ${planned}`;
@@ -1393,4 +1399,20 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("pagehide", stopCamera);
+// Update the status card in place; a full render would reset the page mid-download.
+let lastModelState = modelStatus.state;
+onModelStatus((s) => {
+  const card = $("#model-status");
+  if (s.state !== lastModelState) {
+    lastModelState = s.state;
+    if (page === "check" && !scan && !scanBusy && !photoUrl && !cameraStream) return render();
+  }
+  if (!card) return;
+  $("#model-status-text").textContent = s.message;
+  const bar = card.querySelector("progress");
+  if (bar && s.loaded) bar.value = Math.min(99, Math.round((s.loaded / s.total) * 100));
+});
 render();
+// Start the one-time model download as soon as the app opens, unless Data Saver is on.
+if (!navigator.connection?.saveData)
+  setTimeout(() => loadRecognition().catch(() => {}), 300);

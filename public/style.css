@@ -659,6 +659,12 @@ label.row:hover {
 .notice.blue {
   background: var(--accent-soft);
 }
+.model-status progress {
+  width: 100%;
+  height: 8px;
+  margin: 8px 0 4px;
+  accent-color: var(--accent);
+}
 .demo-banner {
   align-items: center;
   justify-content: space-between;

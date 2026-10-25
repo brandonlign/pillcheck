@@ -1,9 +1,49 @@
 import { detectPills, rankEmbeddings, productNdc } from "./recognition-core.js";
 let loading, session, manifest, gallery, runtime;
+// The encoder is ~88 MB. Expected size is only used when the server sends no Content-Length.
+const MODEL_URL = "/models/pill-encoder.onnx",
+  MODEL_BYTES = 87644905;
+export const modelStatus = { state: "idle", loaded: 0, total: MODEL_BYTES, message: "" };
+const listeners = new Set();
+function setStatus(patch) {
+  Object.assign(modelStatus, patch);
+  listeners.forEach((fn) => fn(modelStatus));
+}
+export function onModelStatus(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+const megabytes = (n) => Math.round(n / 1048576);
+async function fetchModel() {
+  const res = await fetch(MODEL_URL);
+  if (!res.ok) throw Error("The scan model could not be downloaded.");
+  const total = Number(res.headers.get("content-length")) || MODEL_BYTES;
+  let bytes = new Uint8Array(total),
+    loaded = 0;
+  const reader = res.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (loaded + value.length > bytes.length) {
+      const grown = new Uint8Array(Math.max(bytes.length * 2, loaded + value.length));
+      grown.set(bytes);
+      bytes = grown;
+    }
+    bytes.set(value, loaded);
+    loaded += value.length;
+    setStatus({
+      loaded,
+      total: Math.max(total, loaded),
+      message: `Downloading the scan model… ${megabytes(loaded)} of ${megabytes(Math.max(total, loaded))} MB`,
+    });
+  }
+  return bytes.subarray(0, loaded);
+}
 export async function loadRecognition(progress = () => {}) {
+  const off = onModelStatus((s) => s.message && progress(s.message));
   if (!loading)
     loading = (async () => {
-      progress("Loading the on-device recognition model…");
+      setStatus({ state: "loading", message: "Loading the on-device recognition model…" });
       runtime = await import("/vendor/ort.wasm.bundle.min.mjs");
       runtime.env.wasm.wasmPaths = "/vendor/";
       runtime.env.wasm.numThreads = 1;
@@ -26,17 +66,24 @@ export async function loadRecognition(progress = () => {}) {
       gallery = new Float32Array(await responses[1].arrayBuffer());
       if (gallery.length !== manifest.referenceCount * manifest.embeddingSize)
         throw Error("Reference library size mismatch.");
-      session = await runtime.InferenceSession.create(
-        "/models/pill-encoder.onnx",
-        { executionProviders: ["wasm"], graphOptimizationLevel: "all" },
-      );
-      progress("Recognition is ready. Photos stay on this device.");
+      const model = await fetchModel();
+      setStatus({ message: "Starting the scan model…" });
+      session = await runtime.InferenceSession.create(model, {
+        executionProviders: ["wasm"],
+        graphOptimizationLevel: "all",
+      });
+      setStatus({ state: "ready", message: "Recognition is ready. Photos stay on this device." });
       return manifest;
     })().catch((e) => {
       loading = null;
+      setStatus({ state: "idle", message: "" });
       throw e;
     });
-  return loading;
+  try {
+    return await loading;
+  } finally {
+    off();
+  }
 }
 export async function getCatalog(progress = () => {}) {
   await loadRecognition(progress);
