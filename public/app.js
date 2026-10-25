@@ -1,4 +1,4 @@
-import { recognizePhoto, getCatalog, referenceStyle } from "./recognition.js";
+import { recognizePhoto, getCatalog, referenceStyle, compareOtherSide } from "./recognition.js";
 import { evaluateScan, productNdc } from "./recognition-core.js";
 import {
   SLOTS,
@@ -148,6 +148,7 @@ let page = "today",
   viewOrgPhoto = null;
 let storageError = false;
 let scan = null,
+  scanFirst=null,
   scanBusy = false,
   scanProgress = "",
   scanMode = "dose",
@@ -184,6 +185,7 @@ function weekStart() {
 }
 function resetCheck() {
   scanVersion++;
+  scanFirst=null;
   scan = null;
   scanBusy = false;
   scanProgress = "";
@@ -293,7 +295,7 @@ function medications() {
 }
 function scanResultCards() {
   if (!scan) return "";
-  return `<div class="scan-summary"><strong>${scan.mode === "single" ? "Single-pill close-up" : scan.pills.length + " objects found"}</strong><span>${(scan.elapsedMs / 1000).toFixed(1)}s · On-device inference${scan.mode === "single" ? " · One pill assumed" : ""}</span></div>${scan.quality.length ? `<div class="note amber">${scan.quality.map(esc).join("<br>")}</div>` : ""}${scan.pills.map((p, i) => `<article class="scan-pill"><div class="scan-pill-top"><img src="${esc(p.thumbnail)}" alt="Detected object ${i + 1}"><div><h3>Pill ${i + 1}</h3><span class="badge ${p.accepted ? "green" : "amber"}">${p.accepted ? "Visual match" : "Not sure"}</span></div></div><div class="candidate-list">${p.candidates.map((c, j) => `<div class="candidate"><span class="reference-tile" style="${referenceStyle(c.catalogIndex)}" role="img" aria-label="NIH reference front and back"></span><div class="grow"><strong>${esc(c.label ? c.label.name + " " + c.label.strength : "NDC " + c.ndc)}</strong><div class="small muted">${j === 0 ? "Closest reference" : "Alternative"} · similarity ${c.score.toFixed(3)}</div><button class="text-btn" data-connect-pill="${esc(c.id)}">Use this bottle reference →</button></div></div>`).join("")}</div></article>`).join("")}`;
+  return `<div class="scan-summary"><strong>${scan.views===2?scan.pills.length+' pill positions compared in two views':scan.mode === "single" ? "Single-pill close-up" : scan.pills.length + " objects found"}</strong><span>${(scan.elapsedMs / 1000).toFixed(1)}s · On-device inference${scan.mode === "single" ? " · One pill assumed" : ""}</span></div>${scan.quality.length ? `<div class="note amber">${scan.quality.map(esc).join("<br>")}</div>` : ""}${scan.pills.map((p, i) => `<article class="scan-pill"><div class="scan-pill-top"><img src="${esc(p.thumbnail)}" alt="First view of detected object ${i + 1}">${p.secondThumbnail?`<img src="${esc(p.secondThumbnail)}" alt="Other side of detected object ${i+1}">`:''}<div><h3>Pill ${i + 1}</h3><span class="badge ${p.accepted ? "green" : "amber"}">${p.viewConflict?"Views disagree":p.accepted ? "Visual match" : "Not sure"}</span></div></div><div class="candidate-list">${p.candidates.map((c, j) => `<div class="candidate"><span class="reference-tile" style="${referenceStyle(c.catalogIndex)}" role="img" aria-label="NIH reference front and back"></span><div class="grow"><strong>${esc(c.label ? c.label.name + " " + c.label.strength : "NDC " + c.ndc)}</strong><div class="small muted">${j === 0 ? "Closest reference" : "Alternative"} · similarity ${c.score.toFixed(3)}</div><button class="text-btn" data-connect-pill="${esc(c.id)}">Use this bottle reference →</button></div></div>`).join("")}</div></article>`).join("")}`;
 }
 function checkPage() {
   const p = patient(),
@@ -305,9 +307,9 @@ function checkPage() {
       button("Read aloud", "speak", "", "volume"),
     ) +
     `<div class="steps"><span class="step">1</span> Choose a time <span>→</span><span class="step">2</span> Photograph pills <span>→</span><span class="step">3</span> Review the result</div><div class="toolbar">${SLOTS.map((s) => `<button class="btn ${s === selectedSlot ? "primary" : ""}" data-slot="${s}">${s}${isTaken(p, s) ? " ✓" : ""}</button>`).join("")}</div>
- <div class="check-layout"><section class="panel"><div class="panel-head"><h2>Your prepared dose</h2><span class="badge green">Automatic recognition</span></div><div class="capture">${scan?.annotated ? `<img src="${esc(scan.annotated)}" alt="Photo with automatic pill detection boxes">` : photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo to analyze">` : `<div>${icon("camera")}<h3>Give each pill a little space.</h3><p>Place pills apart on a plain, contrasting surface. Use clear light and keep imprints visible.</p><label class="btn primary" for="dose-photo">${icon("camera")} Take or choose a photo</label></div>`}</div>
+ <div class="check-layout"><section class="panel"><div class="panel-head"><h2>Your prepared dose</h2><span class="badge green">Automatic recognition</span></div><div class="capture">${scan?.annotated ? `<div class="scan-views"><figure><img src="${esc(scan.annotated)}" alt="First photo with automatic pill detection boxes">${scan.secondaryAnnotated?'<figcaption>First view</figcaption>':''}</figure>${scan.secondaryAnnotated?`<figure><img src="${esc(scan.secondaryAnnotated)}" alt="Other-side photo with automatic detection boxes"><figcaption>Other side</figcaption></figure>`:''}</div>` : photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo to analyze">` : `<div>${icon("camera")}<h3>Give each pill a little space.</h3><p>Place pills apart on a plain, contrasting surface. Use clear light and keep imprints visible.</p><label class="btn primary" for="dose-photo">${icon("camera")} Take or choose a photo</label></div>`}</div>
  <input id="dose-photo" type="file" accept="image/*" capture="environment" aria-label="Choose dose photo"><div class="toolbar section-gap"><label class="field-group grow">Photo type<select id="scan-mode"><option value="dose" ${scanMode === "dose" ? "selected" : ""}>Several separated pills</option><option value="single" ${scanMode === "single" ? "selected" : ""}>One pill, close-up</option></select></label><button class="btn primary" data-action="scan-photo" ${!photo || scanBusy ? "disabled" : ""}>${scanBusy ? "Analyzing…" : "Analyze photo"}</button></div>
- <div class="scan-progress" role="status" aria-live="polite">${esc(scanProgress)}</div><div class="photo-note">A trained pill metric model searches 4,902 reference identities. Photos and inference stay in your browser. Research prototype; visual matches can be wrong. <button class="text-btn" data-action="show-model-details">See measured accuracy</button></div><div class="example-links"><span class="small muted">No photo handy? Opens a separate sample plan.</span><button class="text-btn" data-action="example-single">Try a real test image →</button><button class="text-btn" data-action="example-dose">Try a two-pill scene →</button></div></section>
+ <div class="scan-progress" role="status" aria-live="polite">${esc(scanProgress)}</div><div class="photo-note">A trained pill metric model searches 4,902 reference identities. Photos and inference stay in your browser. Research prototype; visual matches can be wrong. <button class="text-btn" data-action="show-model-details">See measured accuracy</button></div>${scanFirst&&!scanBusy?`<div class="retake-panel"><strong>${scan?.views===2?'Retake the other side':'Check the other side'}</strong><p>Turn each pill over and keep it in the same position. Both photos must show the same pills.</p><label class="btn" for="other-photo">${icon('camera')} Photograph other side</label><input id="other-photo" type="file" accept="image/*" capture="environment" aria-label="Choose other-side photo">${patient().id==='demo-vision'?button('Try the other-side example','example-back','','arrow'):''}</div>`:''}<div class="example-links"><span class="small muted">No photo handy? Opens a separate sample plan.</span><button class="text-btn" data-action="example-single">Try a real test image →</button><button class="text-btn" data-action="example-dose">Try a two-pill scene →</button></div></section>
  <section class="panel"><div class="panel-head"><h2>${selectedSlot} plan</h2><span class="small muted">${meds.length} medication${meds.length === 1 ? "" : "s"}</span></div>${meds.map((m) => `<div class="dose-row"><div class="pill-wrap">${pill(m)}</div><div class="grow"><h3>${esc(m.name)}</h3><div class="dose-desc">${esc(m.strength)} · expected ${m.quantity}<br>${m.ndc ? "NDC " + esc(m.ndc) : '<span style="color:var(--amber)">Bottle NDC needed for automatic comparison</span>'}</div></div><button class="text-btn" data-edit="${esc(m.id)}">Edit</button></div>`).join("") || '<div class="note">Add the medications and exact bottle NDCs in your prescription plan to compare the detected pills automatically.</div>'}
  ${scan ? `<div id="check-result">${result ? resultHtml() : ""}</div><div class="section-gap"><h2>What the camera found</h2><p class="small muted" style="margin-top:8px">Similarity is a model score, not a probability of correct identification.</p>${scanResultCards()}</div>` : `<div class="scan-empty"><span class="step">↗</span><p>Your photo results will appear here.<br>No pill counts or appearance checkboxes to fill in.</p></div>`}</section></div>
  <details class="panel section-gap"><summary>How the recognition works & measured limits</summary><div class="stack section-gap"><p class="small">A pretrained image encoder and a pill-specific trained metric head compare image features with 9,804 front/back references from the ePillID/NIH dataset. A background-based detector locates separated pills. The detector is not a trained instance-segmentation network and does not support hands, overlapping pills, or organizer grids.</p>${visionEvaluation ? `<p class="small">Image-held-out test: ${visionEvaluation.testImages} consumer images; top-1 retrieval ${(visionEvaluation.testTop1 * 100).toFixed(1)}%. ${visionEvaluation.testAccepted} passed the conservative similarity gate; ${visionEvaluation.testAcceptedCorrect} of those had the correct dataset identity. These benchmark measurements do not establish clinical safety.</p>` : ""}<p class="small muted">A weak score or close alternative returns “not sure.” The library is historical and does not cover every manufacturer or current product. There is no 99% accuracy guarantee or automated imprint OCR. Do not take an unfamiliar pill based on this result.</p><a class="small" href="https://github.com/usuyama/ePillID-benchmark" target="_blank" rel="noopener">Reference dataset and research source ↗</a></div></details>`
@@ -316,8 +318,11 @@ function checkPage() {
 function resultHtml() {
   return `<div class="result ${result.type}" role="status"><h3>${esc(result.title)}</h3><p>${esc(result.detail)}</p>${result.type === "matched" ? button("I took this dose · log it", "log-taken", "primary", "check") : result.type === "duplicate" ? "" : result.type === "setup" ? button("Set up pill references", "go-meds", "", "pill") : button("Save a concern in history", "log-concern", "", "plus")}</div>`;
 }
-async function analyzePhoto() {
-  if (!photo || scanBusy) return;
+async function analyzePhoto(otherSideFile=null) {
+  if ((!photo&&!otherSideFile) || scanBusy) return;
+  const earlier=otherSideFile?scanFirst:null;
+  if(!otherSideFile)scanFirst=null;
+  if(otherSideFile&&!earlier){toast('Analyze the first photo before adding another side.');return;}
   const version = ++scanVersion;
   scanBusy = true;
   scan = null;
@@ -325,7 +330,7 @@ async function analyzePhoto() {
   scanProgress = "Starting on-device recognition…";
   render();
   try {
-    const output = await recognizePhoto(photo, {
+    const output = await recognizePhoto(otherSideFile||photo, {
       mode: scanMode,
       progress: (message) => {
         if (version !== scanVersion) return;
@@ -335,7 +340,8 @@ async function analyzePhoto() {
       },
     });
     if (version !== scanVersion) return;
-    scan = output;
+    if(otherSideFile){const compared=await compareOtherSide(earlier,output);if(version!==scanVersion)return;scan=compared;}
+    else{scanFirst=output;scan=output;}
     result = evaluateScan(patient(), selectedSlot, scan, {
       day: dayKey(),
       currentSlot: currentSlot(),
@@ -938,6 +944,7 @@ function bind() {
     },
     "example-single": () => useExample(false),
     "example-dose": () => useExample(true),
+    'example-back':async()=>{try{const r=await fetch(scanFirst?.pills.length>1?'/examples/dose-other-side.jpg':'/examples/other-side.jpg');if(!r.ok)throw Error('Other-side example is unavailable.');await analyzePhoto(await r.blob());}catch(e){toast(e.message);}},
     "go-meds": () => nav("meds"),
     "log-taken": () => {
       const fresh = evaluateScan(patient(), selectedSlot, scan, {
@@ -1008,6 +1015,7 @@ function bind() {
       render();
       analyzePhoto();
     };
+  if($('#other-photo'))$('#other-photo').onchange=e=>{const file=e.target.files[0];if(!file)return;if(!file.type.startsWith('image/')||file.size>15*1024*1024)return toast('Choose an image under 15 MB.');analyzePhoto(file);};
   if ($("#org-photo"))
     $("#org-photo").onchange = (e) => {
       const f = e.target.files[0];

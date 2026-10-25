@@ -1490,3 +1490,4 @@ details .small {
     height: 65px;
   }
 }
+.scan-views{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;width:100%}.scan-views figure{margin:0;min-width:0}.scan-views img{width:100%;object-fit:contain}.scan-views figcaption{font-size:11px;color:var(--muted);margin-top:7px}.retake-panel{padding:18px;margin-top:18px;background:#eef2e8;border:1px solid #dae3d0;border-radius:8px}.retake-panel>strong{font-size:13px}.retake-panel p{font-size:12px;line-height:1.7;color:var(--muted);margin:6px 0 12px}.retake-panel .btn{font-size:12px}.retake-panel input{display:block}.scan-pill-top>img{max-width:76px}

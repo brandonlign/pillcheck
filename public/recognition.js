@@ -1,4 +1,4 @@
-import { detectPills, rankEmbeddings, productNdc } from "./recognition-core.js";
+import { detectPills, productNdc, originalCrop, referenceSimilarities, rankReferenceScores, combineViews } from "./recognition-core.js";
 let loading, session, manifest, gallery, runtime;
 export async function loadRecognition(progress = () => {}) {
   if (!loading)
@@ -63,16 +63,13 @@ function inputTensor(source) {
 async function classify(source) {
   const output = await session.run({ image: inputTensor(source) });
   const vector = output.embedding.data;
-  const candidates = rankEmbeddings(
-    vector,
-    gallery,
-    manifest.referenceIds,
-    manifest.catalog,
-  );
+  const evidence=referenceSimilarities(vector,gallery);
+  const candidates=rankReferenceScores(evidence,manifest.referenceIds,manifest.catalog);
   const margin =
     candidates.length > 1 ? candidates[0].score - candidates[1].score : 0;
   return {
     candidates,
+    evidence,
     margin,
     accepted:
       !!candidates.length &&
@@ -96,7 +93,6 @@ export async function recognizePhoto(
       Math.round(bitmap.height * scale),
     );
   source.getContext("2d").drawImage(bitmap, 0, 0, source.width, source.height);
-  bitmap.close();
   let regions,
     quality = [],
     detection;
@@ -128,19 +124,22 @@ export async function recognizePhoto(
     );
     const box = regions[i];
     let crop;
-    if (box.single) crop = source;
+    if (box.single) {
+      crop=canvas(manifest.inputSize,manifest.inputSize);
+      crop.getContext('2d').drawImage(bitmap,0,0,crop.width,crop.height);
+    }
     else {
-      const side = Math.max(box.width, box.height) * 1.17;
+      const raw=originalCrop(box,source,bitmap);
       crop = canvas(manifest.inputSize, manifest.inputSize);
       const ctx = crop.getContext("2d");
       ctx.fillStyle = "black";
       ctx.fillRect(0, 0, crop.width, crop.height);
       ctx.drawImage(
-        source,
-        box.x - (side - box.width) / 2,
-        box.y - (side - box.height) / 2,
-        side,
-        side,
+        bitmap,
+        raw.x,
+        raw.y,
+        raw.width,
+        raw.height,
         0,
         0,
         crop.width,
@@ -154,6 +153,7 @@ export async function recognizePhoto(
       thumbnail: crop.toDataURL("image/jpeg", 0.82),
     });
   }
+  bitmap.close();
   const annotated = canvas(source.width, source.height),
     ctx = annotated.getContext("2d");
   ctx.drawImage(source, 0, 0);
@@ -190,3 +190,5 @@ export function referenceStyle(index) {
     local = index % 100;
   return `background-image:url('/models/references-${sheet}.webp');background-size:1600px 800px;background-position:-${(local % 10) * 160}px -${Math.floor(local / 10) * 80}px;`;
 }
+
+export async function compareOtherSide(first,second){await loadRecognition();return combineViews(first,second,manifest);}

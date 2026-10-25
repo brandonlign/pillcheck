@@ -149,3 +149,31 @@ test("detector returns no pills on an empty mat", () =>
   assert.equal(detectPills(image()).components.length, 0));
 test("detector flags cut-off foreground objects", () =>
   assert.ok(detectPills(image([{ x: 3, y: 70, r: 20 }])).quality.length));
+test('recognition crop maps preview detections back to original photo pixels',async()=>{
+ const {originalCrop}=await import('../public/recognition-core.js');
+ const crop=originalCrop({x:100,y:100,width:180,height:90},{width:900,height:675},{width:4000,height:3000},1);
+ assert.equal(crop.width,800);assert.equal(crop.height,800);
+ assert.ok(Math.abs(crop.x-100*4000/900)<1e-8);
+ assert.ok(Math.abs(crop.y-55*3000/675)<1e-8);
+});
+test('two-view matching combines opposite pill faces rather than averaging unrelated guesses',async()=>{
+ const {jointViewCandidates}=await import('../public/recognition-core.js');
+ const manifest={catalog:[{id:'A',ndc:'00093-0148',references:[0,1]},{id:'B',ndc:'11111-1111',references:[2,3]}],referenceIds:[0,0,1,1],referenceSides:[true,false,true,false]};
+ const candidates=jointViewCandidates([.95,.1,.8,.2],[.1,.94,.2,.7],manifest);
+ assert.equal(candidates[0].id,'A');assert.ok(Math.abs(candidates[0].score-.945)<1e-6);
+});
+test('a retake with changed counts cannot produce a combined dose match',async()=>{
+ const {combineViews}=await import('../public/recognition-core.js');
+ const combined=combineViews({pills:[{box:{x:0,y:0,width:10,height:10}}],width:100,height:100,quality:[]},{pills:[],width:100,height:100,quality:[]},{});
+ assert.ok(combined.error.includes('different detected counts'));
+});
+test('smooth lighting gradients are modeled separately from separated pills',()=>{
+ const width=240,height=160,data=new Uint8ClampedArray(width*height*4);
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+  const i=(y*width+x)*4,foreground=(x-65)**2+(y-80)**2<19**2||(x-170)**2+(y-85)**2<22**2;
+  const background=35+x*.55+y*.15;
+  data[i]=foreground?235:background;data[i+1]=foreground?220:background;data[i+2]=foreground?180:background;data[i+3]=255;
+ }
+ const detected=detectPills({width,height,data},{illumination:true});
+ assert.equal(detected.components.length,2);assert.deepEqual(detected.quality,[]);
+});
