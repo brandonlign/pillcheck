@@ -215,8 +215,8 @@ const server = http.createServer(async (req, res) => {
         return json(res, response.status === 429 ? 503 : 502, {
           error:
             response.status === 429
-              ? "The NVIDIA model is busy. Wait a moment and try again."
-              : "The NVIDIA image analysis request failed. Try again later.",
+              ? "Our detection model is busy. Wait a moment and try again."
+              : "Our detection model is unavailable. Try again later.",
         });
       }
       const completion = await response.json();
@@ -227,15 +227,15 @@ const server = http.createServer(async (req, res) => {
           ? content.trim()
           : "";
       if (!analysis)
-        return json(res, 502, { error: "The NVIDIA model returned no analysis." });
+        return json(res, 502, { error: "Our detection model returned no analysis." });
       return json(res, 200, {
-        model: "z-ai/glm-5.3-flash",
+        model: "PillCheck detection model",
         analysis: analysis.slice(0, 6000),
       });
     } catch (error) {
       if (error.status === 413) return json(res, 413, { error: error.message });
       if (error.name === "TimeoutError" || error.name === "AbortError")
-        return json(res, 504, { error: "NVIDIA image analysis took too long. Try again." });
+        return json(res, 504, { error: "Our detection model took too long. Try again." });
       console.error("Pill analysis request failed:", error.name || "Error");
       return json(res, 502, { error: "The image could not be analyzed. Try another photo." });
     }

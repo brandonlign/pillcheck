@@ -270,10 +270,10 @@ function welcome() {
   return `<main class="welcome" id="main"><div class="welcome-inner">
 <div class="welcome-hero"><img src="/icon.svg" alt=""><h1>${state.onboarded ? "How PillCheck works" : "Welcome to PillCheck"}</h1><p>A second pair of eyes for every dose.</p></div>
 <div class="card" style="display:grid;gap:22px;padding:22px">
-<div class="feature">${art("camera", 46)}<div><b>Check a dose with the live camera</b><p>See object outlines update in the camera preview, then capture a frame for a GLM-5.3-Flash visual suggestion.</p></div></div>
+<div class="feature">${art("camera", 46)}<div><b>Check a dose with the live camera</b><p>See object outlines update in the camera preview, then capture a frame for a suggestion from our detection model.</p></div></div>
 <div class="feature">${art("question", 46)}<div><b>Says “not sure” instead of guessing</b><p>Look-alike or unclear pills are flagged, so you know to check the bottle or ask a pharmacist.</p></div></div>
 <div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help, with large text and read-aloud.</p></div></div>
-<div class="feature">${art("lock", 46)}<div><b>Know where photos go</b><p>When you analyze a photo, it is sent to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log prompts and images. PillCheck does not save the photo.</p></div></div>
+<div class="feature">${art("lock", 46)}<div><b>Know where photos go</b><p>When you analyze a photo, it is sent to NVIDIA for processing with our detection model. NVIDIA’s trial service may log prompts and images. PillCheck does not save the photo.</p></div></div>
 </div>
 <div class="welcome-actions">${state.onboarded ? button("Back to the app", "back-to-app", "primary block") : button("Get started", "new-profile", "primary block")}</div>
 <p class="fine">Research prototype for the Congressional App Challenge. Not a medical device.</p>
@@ -368,8 +368,8 @@ const RESULT_KIND = {
   duplicate: ["warn", "warning"],
 };
 function resultHtml() {
-  if (scan?.model === "z-ai/glm-5.3-flash")
-    return `<div class="result warn" role="status" id="check-result">${art("warning", 84)}<h2>Visual suggestion · verify the label</h2><p>GLM-5.3-Flash cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.</p><label class="checks section-gap"><input id="manual-dose-confirm" type="checkbox"> I checked each pill against the pharmacy label and today’s plan</label><div class="actions"><button class="btn success block" data-action="log-taken" id="manual-log" disabled>I took this verified dose</button>${button("Save a concern", "log-concern", "block", "triangle-alert")}${button("Retake photo", "retake", "block", "camera")}</div></div>`;
+  if (scan?.model === "PillCheck detection model")
+    return `<div class="result warn" role="status" id="check-result">${art("warning", 84)}<h2>Visual suggestion · verify the label</h2><p>Our detection model cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.</p><label class="checks section-gap"><input id="manual-dose-confirm" type="checkbox"> I checked each pill against the pharmacy label and today’s plan</label><div class="actions"><button class="btn success block" data-action="log-taken" id="manual-log" disabled>I took this verified dose</button>${button("Save a concern", "log-concern", "block", "triangle-alert")}${button("Retake photo", "retake", "block", "camera")}</div></div>`;
   const [kind, pic] = RESULT_KIND[result.type] || ["warn", "warning"];
   const primary =
     result.type === "matched"
@@ -386,7 +386,7 @@ function scanSteps() {
   return `<div class="card steps" role="status" aria-live="polite">${[
     "Preparing a resized photo",
     "Sending the photo to NVIDIA",
-    "Analyzing with GLM-5.3-Flash",
+    "Analyzing with PillCheck’s detection model",
   ]
     .map(
       (s, i) =>
@@ -399,7 +399,7 @@ function visualSuggestionResult() {
     type: "uncertain",
     title: "Visual suggestion · verify the label",
     detail:
-      "GLM-5.3-Flash cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.",
+      "Our detection model cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.",
   };
 }
 function checkPage() {
@@ -409,16 +409,16 @@ function checkPage() {
   const slotPicker = `<div class="segmented" role="group" aria-label="Which dose">${SLOTS.map((s) => `<button data-slot="${s}" aria-pressed="${s === selectedSlot}">${s}${isTaken(p, s) ? " ✓" : ""}</button>`).join("")}</div>`;
   let body;
   if (scan && result && !scanBusy)
-    body = `<div class="viewfinder" style="aspect-ratio:auto;min-height:200px;margin-top:14px"><img src="${esc(photoUrl)}" alt="Photo submitted for visual analysis" style="position:static;max-height:300px"></div><div class="section">${resultHtml()}</div><div class="section card"><h2>GLM-5.3-Flash visual suggestion</h2><p class="ai-output">${esc(scan.analysis)}</p><p class="caption">This is an unverified AI suggestion, not a pill identification or medication recommendation.</p></div>${planned}`;
+    body = `<div class="viewfinder" style="aspect-ratio:auto;min-height:200px;margin-top:14px"><img src="${esc(photoUrl)}" alt="Photo submitted for visual analysis" style="position:static;max-height:300px"></div><div class="section">${resultHtml()}</div><div class="section card"><h2>Our detection model’s visual suggestion</h2><p class="ai-output">${esc(scan.analysis)}</p><p class="caption">This is an unverified AI suggestion, not a pill identification or medication recommendation.</p></div>${planned}`;
   else if (cameraStream)
-    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only. Capture sends this photo to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log images. Avoid labels, faces, or documents; the model cannot confirm pill identity.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
+    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only. Capture sends this photo to our detection model through NVIDIA. NVIDIA’s trial service may log images. Avoid labels, faces, or documents; the model cannot confirm pill identity.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
   else if (scanBusy || photoUrl)
     body = `<div class="viewfinder ${scanBusy ? "busy" : ""}" style="margin-top:14px">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being checked">` : ""}<span class="corners"></span></div><div class="section">${scanBusy ? scanSteps() : `<div class="notice">${art("warning", 32)}<div><b>${esc(scanProgress || "Ready")}</b></div></div>`}</div>`;
   else
     body = `<div class="viewfinder" id="dropzone" style="margin-top:14px"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread the pills on a plain surface"}</b><span>Keep them apart with imprints up, in good light. Start the live camera or upload a photo.</span></span></div>
 ${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
 <div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="start-camera" aria-label="Start live camera">${icon("camera")}</button><button class="side-action" data-mode="${scanMode === "dose" ? "single" : "dose"}" aria-label="Switch to ${scanMode === "dose" ? "one-pill close-up" : "several pills"}"><span class="ico">${icon(scanMode === "dose" ? "pill" : "grid-3x3")}</span>${scanMode === "dose" ? "Several pills" : "One pill"}</button></div>
-<p class="caption">Analyzing a photo sends it to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log prompts and images. Avoid including labels, faces, or personal documents.</p>
+<p class="caption">Analyzing a photo sends it to NVIDIA for our detection model to process. NVIDIA’s trial service may log prompts and images. Avoid including labels, faces, or personal documents.</p>
 ${planned}`;
   return (
     topbar("Scan a dose", {
@@ -637,7 +637,7 @@ async function analyzePhoto() {
       throw Error(payload.error || "NVIDIA image analysis is unavailable. Try again.");
     if (version !== scanVersion) return;
     scan = {
-      model: payload.model || "z-ai/glm-5.3-flash",
+      model: payload.model || "PillCheck detection model",
       analysis: payload.analysis,
       elapsedMs: performance.now() - started,
       pills: [],
@@ -750,13 +750,13 @@ function settings() {
       .map(([id, label]) => `<option value="${id}" ${state.language === id ? "selected" : ""}>${label}</option>`)
       .join("")}</select></label><button class="row" data-action="speak"><span class="ico-tile t-teal">${icon("volume-2")}</span><span class="grow row-title">Play a voice preview</span><span class="chev">${icon("chevron-right")}</span></button></div></div>
 <div class="section"><div class="section-head"><h2>Your data</h2></div><div class="list"><button class="row" data-action="export"><span class="ico-tile t-blue">${icon("download")}</span><span class="grow"><span class="row-title">Export a backup</span><br><span class="row-sub">Contains health information; keep it private</span></span><span class="chev">${icon("chevron-right")}</span></button><label class="row" for="import-file"><span class="ico-tile t-green">${icon("upload")}</span><span class="grow"><span class="row-title">Restore from a backup</span><br><span class="row-sub">You confirm before anything is replaced</span></span><span class="chev">${icon("chevron-right")}</span></label><button class="row" data-action="reset"><span class="ico-tile t-red">${icon("trash-2")}</span><span class="grow row-title" style="color:var(--red)">Erase all data on this device</span></button></div><input id="import-file" type="file" accept="application/json,.json"></div>
-<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow"><span class="row-title">How PillCheck works</span><br><span class="row-sub">Accuracy, limits and data sources</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Care profiles and logs stay in this browser, unencrypted. When you analyze a photo, PillCheck sends a compressed copy to NVIDIA’s GLM-5.3-Flash endpoint. NVIDIA says its trial service may record prompts and images for service operation and improvement. PillCheck does not store the photo. Avoid including labels, faces, or documents. <a href="https://build.nvidia.com/z-ai/glm-5-3-flash/modelcard" target="_blank" rel="noopener">NVIDIA model and privacy details</a>.</p><p class="caption">A medicine name or NDC is sent to the U.S. National Library of Medicine only when you use lookup. No analytics or tracking.</p><p class="caption">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
+<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow"><span class="row-title">How PillCheck works</span><br><span class="row-sub">Accuracy, limits and data sources</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Care profiles and logs stay in this browser, unencrypted. When you analyze a photo, PillCheck sends a compressed copy to NVIDIA for processing with our detection model. NVIDIA says its trial service may record prompts and images for service operation and improvement. PillCheck does not store the photo. Avoid including labels, faces, or documents.</p><p class="caption">A medicine name or NDC is sent to the U.S. National Library of Medicine only when you use lookup. No analytics or tracking.</p><p class="caption">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
   );
 }
 function about() {
   return (
     topbar("How it works", { back: "settings" }) +
-    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Find separate objects</b><p>The live camera uses simple background segmentation to draw outlines. It can mistake other objects for pills or miss touching pills.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Ask GLM-5.3-Flash for a visual description</b><p>After you capture or select a photo, the server sends a compressed copy to NVIDIA. GLM may describe shape and color, read a visible imprint, or suggest possibilities.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check the pharmacy label</b><p>The model does not verify pill identity against your plan. Treat every suggestion as uncertain and confirm each pill using its original label or a pharmacist.</p></div></div></div><div class="section notice orange">${art("warning", 32)}<div><b>Know the limits</b><p>GLM-5.3-Flash is not clinically validated for medication identification and can be wrong. Color and shape alone are not enough to identify a pill. Never take an unfamiliar pill because of an AI suggestion.</p></div></div><p class="caption">The bundled DINOv2 recognition files remain in this repository but are not called by the app. Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT).</p>`
+    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Find separate objects</b><p>The live camera uses simple background segmentation to draw outlines. It can mistake other objects for pills or miss touching pills.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Ask our detection model for a visual description</b><p>After you capture or select a photo, the server sends a compressed copy to NVIDIA for processing. It may describe shape and color, read a visible imprint, or suggest possibilities.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check the pharmacy label</b><p>Our detection model does not verify pill identity against your plan. Treat every suggestion as uncertain and confirm each pill using its original label or a pharmacist.</p></div></div></div><div class="section notice orange">${art("warning", 32)}<div><b>Know the limits</b><p>Our detection model is not clinically validated for medication identification and can be wrong. Color and shape alone are not enough to identify a pill. Never take an unfamiliar pill because of an AI suggestion.</p></div></div><p class="caption">The previous on-device pill identity model remains in the project but is inactive. Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT).</p>`
   );
 }
 function profilesSheet() {
@@ -1079,7 +1079,7 @@ function report() {
       .filter((r) => r.at.slice(0, 10) >= dayKey(cutoff))
       .map((r) => `<p>${esc(r.name)}: ${esc(r.note)}</p>`)
       .join("") || "<p>No refill notes this week.</p>"
-  }<p>This is a self-reported record, not proof of ingestion or pill identity. PillCheck is a double-check aid and does not replace a pharmacist. GLM-5.3-Flash suggestions are unverified and can be wrong. No clinical accuracy guarantee is active.</p>`;
+  }<p>This is a self-reported record, not proof of ingestion or pill identity. PillCheck is a double-check aid and does not replace a pharmacist. Suggestions from our detection model are unverified and can be wrong. No clinical accuracy guarantee is active.</p>`;
   window.print();
 }
 function exportData() {

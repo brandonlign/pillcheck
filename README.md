@@ -1,6 +1,6 @@
 # PillCheck
 
-**Double-check every dose with a live camera.** PillCheck draws live object outlines in the browser and sends a compressed photo to NVIDIA’s GLM-5.3-Flash endpoint for a visual suggestion. The model does not verify pill identity against a prescription plan.
+**Double-check every dose with a live camera.** PillCheck draws live object outlines in the browser and sends a compressed photo to NVIDIA for a visual suggestion from our detection model. The model does not verify pill identity against a prescription plan.
 
 This is a research prototype, not a clinically validated medication identifier. Treat every AI result as uncertain and check each pill against its pharmacy label or with a pharmacist.
 ## Run
@@ -19,20 +19,20 @@ Set `NVIDIA_API_KEY` in the server environment. Never put the key in browser cod
 ## Scan a photo
 
 1. Open **Check a dose** and start the live camera, or choose **Upload**.
-2. Live outlines run locally. Capturing or selecting a photo resizes it and sends a JPEG to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log prompts and images; avoid including labels, faces, or personal documents.
+2. Live outlines run locally. Capturing or selecting a photo resizes it and sends a JPEG to NVIDIA for processing with our detection model. NVIDIA’s trial service may log prompts and images; avoid including labels, faces, or personal documents.
 3. Review the visual suggestion, then compare every pill with its pharmacy label and saved plan. The model output is unverified and cannot authorize a dose. Confirm manually before logging.
 
 ## What the scan actually does
 
 - **Live outlines:** browser-based background segmentation, morphology, and connected components. It can mistake other objects for pills or miss touching pills.
-- **Visual suggestion:** the server proxies the photo to NVIDIA’s `z-ai/glm-5.3-flash` chat endpoint. The model may describe appearance, transcribe a visible imprint, or suggest possibilities; there is no automatic identity-to-plan match.
-- **Limits:** GLM can misread an imprint or invent an identity. It is not a clinical pill identifier, chemical assay, counterfeit check, or proof of a current product’s appearance.
-- **Privacy:** the browser resizes photos and converts them to JPEG before upload. PillCheck does not persist the image. NVIDIA’s trial endpoint may log prompts and images for operation and improvement; review its [model privacy details](https://build.nvidia.com/z-ai/glm-5-3-flash/modelcard).
+- **Visual suggestion:** the server proxies the photo to NVIDIA for processing with our detection model. It may describe appearance, transcribe a visible imprint, or suggest possibilities; there is no automatic identity-to-plan match.
+- **Limits:** our detection model can misread an imprint or invent an identity. It is not a clinical pill identifier, chemical assay, counterfeit check, or proof of a current product’s appearance.
+- **Privacy:** the browser resizes photos and converts them to JPEG before upload. PillCheck does not persist the image. NVIDIA’s trial endpoint may log prompts and images for operation and improvement.
 - **Retained model:** the DINOv2 weights and evaluation report in `public/models/` remain for research history, but the app does not load or call that model.
 
 ## Retained model evaluation
 
-The report in [`public/models/evaluation.json`](public/models/evaluation.json) measures the bundled DINOv2 model only. Those figures do not measure GLM-5.3-Flash and are not current app accuracy.
+The report in [`public/models/evaluation.json`](public/models/evaluation.json) measures the retained on-device DINOv2 model only. Those figures do not measure our detection model and are not current app accuracy.
 ## Interface
 
 The UI is modelled on the patterns shared by the best-rated apps in this space, studied from their App Store screens: **Medisafe** (4.7★, 102K ratings), **MyTherapy** (4.8★), Apple Health Medications, the Apple Design Award winner **Streaks** (4.8★), **Duolingo** (4.7★, 5.5M ratings) and top medication-app concepts on Dribbble.
@@ -62,7 +62,7 @@ Bottle OCR/barcode scanning; automated imprint OCR; arbitrary organizer detectio
 
 ## Data and privacy
 
-Plans and logs are stored unencrypted in browser localStorage. Someone using the same browser profile can read them, and storage can be cleared. Export backups carefully. Each selected photo is resized in the browser and sent through the PillCheck server to NVIDIA GLM-5.3-Flash. PillCheck does not persist photos, but NVIDIA’s trial endpoint may log inputs and outputs. User-triggered medication search sends the entered name/NDC to NLM; browser speech may process spoken text externally. There is no analytics service or remote patient database.
+Plans and logs are stored unencrypted in browser localStorage. Someone using the same browser profile can read them, and storage can be cleared. Export backups carefully. Each selected photo is resized in the browser and sent through the PillCheck server to NVIDIA for processing with our detection model. PillCheck does not persist photos, but NVIDIA’s trial endpoint may log inputs and outputs. User-triggered medication search sends the entered name/NDC to NLM; browser speech may process spoken text externally. There is no analytics service or remote patient database.
 
 Logging is self-reported and does not prove swallowing. Historical schedule edits can change past chart denominators; dates before a newly added medication's start date are excluded. Use one active entry tab; localStorage is not a transactional multi-user database.
 

@@ -1,7 +1,7 @@
 // Offline support. The app shell is network-first (always fresh when online);
 // retained model assets, fonts and runtime are cache-first after first use.
 // The app no longer imports recognition.js, so it never starts the pill model.
-const SHELL = "pillcheck-shell-v6";
+const SHELL = "pillcheck-shell-v7";
 const ASSETS = "pillcheck-assets-finetune-v2";
 const shell = ["/", "/index.html", "/style.css", "/fonts.css", "/app.js", "/core.js", "/icons.js", "/recognition-core.js", "/icon.svg", "/manifest.webmanifest"];
 
