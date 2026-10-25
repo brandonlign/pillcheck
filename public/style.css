@@ -792,6 +792,11 @@ label.row:hover {
   font-size: 1.05rem;
   font-weight: 800;
 }
+.slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .slot-sun {
   color: #ff9500;
 }

@@ -244,12 +244,10 @@ function render() {
 <button class="btn primary side-scan" data-page="check">${icon("scan-line")}Scan a dose</button>
 ${NAV.filter(([id]) => id !== "check")
   .map(([id, ic, label]) => {
-    // The organizer has its own sidebar link; on phones it lives under Medications.
     const on = page === "organizer" ? false : current === id;
     return `<button class="side-link ${on ? "active" : ""}" data-page="${id}" ${on ? 'aria-current="page"' : ""}>${icon(ic)}${label}</button>`;
   })
   .join("")}
-<button class="side-link ${page === "organizer" ? "active" : ""}" data-page="organizer">${icon("grid-3x3")}Pill organizer</button>
 <div class="side-foot"><button class="profile-chip" data-action="profiles"><span class="avatar sm">${initials(p.name)}</span><span class="grow"><b>${esc(p.name)}</b><small>${p.meds.length} medication${p.meds.length === 1 ? "" : "s"} · Switch</small></span></button></div></nav>
 <div class="main"><main id="main" class="page" tabindex="-1" style="${entering ? "" : "animation:none"}">${storageError ? `<div class="notice orange" style="margin-top:12px">${art("warning", 32)}<div><b>Changes aren’t being saved</b><p>Export a backup in Settings.</p></div></div>` : ""}${body}</main></div></div>
 <nav class="tabbar" aria-label="Main navigation">${NAV.map(([id, ic, label]) => `<button class="${current === id ? "active" : ""} ${id === "check" ? "scan-tab" : ""}" data-page="${id}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span></button>`).join("")}</nav>`;
@@ -297,7 +295,10 @@ function today() {
     .map((s) => {
       const done = isTaken(p, s, viewDay),
         log = p.logs.find((l) => l.day === viewDay && l.slot === s && l.status === "taken");
-      return `<section class="section"><div class="dose-group-head"><h3>${art(SLOT_ART[s], 30)}${s}</h3>${!done && isToday && s !== next ? `<button class="link" data-slot="${s}">${icon("scan-line")}Scan</button>` : ""}</div><div class="list">${done ? `<div class="taken-banner">${icon("check")}Taken${log ? " at " + esc(new Date(log.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })) : ""}</div>` : ""}${dosesFor(p, s, viewDay)
+      const doseActions = !done && isToday
+        ? `<div class="slot-actions"><button class="link" data-manual-slot="${s}">Log manually</button>${s !== next ? `<button class="link" data-slot="${s}">${icon("scan-line")}Scan</button>` : ""}</div>`
+        : "";
+      return `<section class="section"><div class="dose-group-head"><h3>${art(SLOT_ART[s], 30)}${s}</h3>${doseActions}</div><div class="list">${done ? `<div class="taken-banner">${icon("check")}Taken${log ? " at " + esc(new Date(log.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })) : ""}</div>` : ""}${dosesFor(p, s, viewDay)
         .map(
           (m) =>
             `<${!done && isToday ? `button data-slot="${s}"` : "div"} class="row">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)}</span><br><span class="row-sub">${esc(m.strength)} · ${m.quantity} ${m.shape === "Capsule" ? "capsule" : "tablet"}${m.quantity > 1 ? "s" : ""}</span></span><span class="check-circle ${done ? "done" : ""}">${icon("check")}</span></${!done && isToday ? "button" : "div"}>`,
@@ -314,8 +315,7 @@ function today() {
     groups +
     (pairs.length
       ? `<div class="section notice orange">${art("warning", 32)}<div><b>Some pills look alike</b><p>${pairs.map(([a, b]) => `${esc(a.name)} and ${esc(b.name)}`).join("; ")} look alike. Check the imprints.</p></div></div>`
-      : "") +
-    `<div class="section grid-2"><button class="card row" data-page="organizer" style="min-height:0">${art("calendar", 40)}<span class="grow"><span class="row-title">Pill organizer</span><br><span class="row-sub">Weekly box</span></span>${icon("chevron-right")}</button><button class="card row" data-action="report" style="min-height:0">${art("chart", 40)}<span class="grow"><span class="row-title">Doctor report</span><br><span class="row-sub">Print the week</span></span>${icon("chevron-right")}</button></div>`
+      : "")
   );
 }
 function medications() {
@@ -325,7 +325,7 @@ function medications() {
     ),
     pairs = blindSpots(p.meds);
   return (
-    topbar("Medications", {
+    topbar("Your plan", {
       actions: `<button class="round-btn" data-action="add-med" aria-label="Add medication" title="Add medication">${icon("plus")}</button>${avatarBtn()}`,
     }) +
     (p.meds.length > 3
@@ -342,7 +342,7 @@ function medications() {
           )
           .join("") || '<div class="row plain"><span class="muted">No matches</span></div>'}</div></div>`
       : `<div class="section card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:30px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">No medications yet</h2>${button("Add medication", "add-med", "primary block", "plus")}</div>`) +
-    `<div class="section"><div class="section-head"><h2>Tools</h2></div><div class="list"><button class="row" data-page="organizer"><span class="ico-tile t-purple">${icon("grid-3x3")}</span><span class="grow row-title">Pill organizer</span><span class="chev">${icon("chevron-right")}</span></button></div></div>`
+    `<div class="section list"><button class="row" data-page="organizer"><span class="ico-tile t-purple">${icon("grid-3x3")}</span><span class="grow row-title">Pill organizer</span><span class="chev">${icon("chevron-right")}</span></button></div>`
   );
 }
 // Map the detection model's free-text color and shape onto the app's pill icons.
@@ -407,9 +407,21 @@ function resultHtml(meds) {
       return `<div class="row">${pill(look)}<span class="grow"><span class="row-title">${esc(label)}</span>${sub ? "<br>" + sub : ""}</span>${f.imprint ? `<span class="imprint">${esc(f.imprint)}</span>` : ""}</div>`;
     })
     .join("");
+  const logAction = !expected
+    ? ""
+    : countOk
+      ? button("Log as taken", "log-taken", "success block", "check")
+      : button("Log manually", "log-manual", "success block", "check");
+  const resultNote = !expected
+    ? `Nothing is planned for ${selectedSlot.toLowerCase()}.`
+    : countOk
+      ? "Research prototype · compare with your pharmacy label."
+      : found.length
+        ? "The detected count does not match the plan. Retake or log manually if you took the dose."
+        : "No pills were detected, so this scan cannot be logged as taken. If you took the dose, you can record it manually.";
   return `<div class="card found" role="status" id="check-result"><div class="found-head"><span class="found-ico ${countOk ? "good" : "warn"}">${icon(countOk ? "check" : found.length ? "triangle-alert" : "x")}</span><div><h2>${head}</h2><p>${esc(sub)}</p></div></div>${rows ? `<div class="list flat">${rows}</div>` : ""}${scan.note ? `<p class="found-note">${esc(scan.note)}</p>` : ""}</div>
-<div class="actions-row">${button("Log as taken", "log-taken", "success block", "check")}<div class="btn-pair">${button("Retake", "retake", "block", "camera")}${button("Flag a problem", "log-concern", "block", "triangle-alert")}</div></div>
-<p class="research-note">Research prototype · compare with your pharmacy label.</p>`;
+<div class="actions-row">${logAction}<div class="btn-pair">${button("Retake", "retake", "block", "camera")}${button("Flag a problem", "log-concern", "block", "triangle-alert")}</div></div>
+<p class="research-note">${resultNote}</p>`;
 }
 function checkPage() {
   const p = patient(),
@@ -1005,8 +1017,29 @@ function cellDialog(key) {
       render();
     };
 }
-function logDose(status) {
+function confirmManualLog() {
+  if (!dosesFor(patient(), selectedSlot).length)
+    return toast("No medication is scheduled for this period.");
+  confirmDialog(
+    "Log dose manually?",
+    "This is a self-reported record and does not use the scan. Continue only if you took the scheduled dose.",
+    () => logDose("taken", "manual"),
+    "Log dose",
+  );
+}
+function logDose(status, method = "scan") {
   const p = patient();
+  if (status === "taken" && !dosesFor(p, selectedSlot).length) {
+    toast("No medication is scheduled for this period.");
+    return;
+  }
+  if (status === "taken" && method === "scan") {
+    const expected = dosesFor(p, selectedSlot).reduce((n, m) => n + m.quantity, 0);
+    if (!expected || !scan?.pills?.length || scan.pills.length !== expected) {
+      toast("The scan count does not match the plan. Retake or log manually.");
+      return;
+    }
+  }
   if (status === "taken" && isTaken(p, selectedSlot)) {
     toast("This scheduled period is already logged.");
     return;
@@ -1019,7 +1052,9 @@ function logDose(status) {
     at: new Date().toISOString(),
     note:
       status === "taken"
-        ? "Logged after a scan"
+        ? method === "manual"
+          ? "Manually logged by user"
+          : "Logged after a scan"
         : "Concern reported after a scan",
     medications: dosesFor(p, selectedSlot).map((m) => ({
       name: m.name,
@@ -1027,7 +1062,7 @@ function logDose(status) {
       quantity: m.quantity,
     })),
     observations: structuredClone(observations),
-    recognition: scan
+    recognition: method === "scan" && scan
       ? {
           model: scan.model,
           elapsedMs: scan.elapsedMs,
@@ -1136,6 +1171,13 @@ function bind() {
         observations = {};
         if (page !== "check") nav("check");
         else render();
+      }),
+  );
+  document.querySelectorAll("[data-manual-slot]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        selectedSlot = b.dataset.manualSlot;
+        confirmManualLog();
       }),
   );
   document.querySelectorAll("[data-mode]").forEach(
@@ -1248,6 +1290,7 @@ function bind() {
     },
     "go-meds": () => nav("meds"),
     "log-taken": () => logDose("taken"),
+    "log-manual": confirmManualLog,
     "log-concern": () => logDose("concern"),
     reset: () =>
       confirmDialog(
