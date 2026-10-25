@@ -154,7 +154,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 405, { error: "Use POST to analyze an image." });
     if (!allowVisionRequest(req))
       return json(res, 429, { error: "Too many scans. Wait a minute and try again." });
-    const apiKey = process.env.NVIDIA_API_KEY;
+    const apiKey = process.env.PILLCHECK_API_KEY;
     if (!apiKey)
       return json(res, 503, { error: "Cloud pill analysis is not configured on the server." });
     const mime = String(req.headers["content-type"] || "")
@@ -211,7 +211,7 @@ const server = http.createServer(async (req, res) => {
         },
       );
       if (!response.ok) {
-        console.error("NVIDIA pill analysis failed with HTTP", response.status);
+        console.error("Detection model analysis failed with HTTP", response.status);
         return json(res, response.status === 429 ? 503 : 502, {
           error:
             response.status === 429

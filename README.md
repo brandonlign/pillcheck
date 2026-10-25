@@ -9,17 +9,17 @@ Node.js 22 or newer:
 
 ```sh
 npm ci
-NVIDIA_API_KEY=your_key_here npm start
+PILLCHECK_API_KEY=your_key_here npm start
 ```
 
-Set `NVIDIA_API_KEY` in the server environment. Never put the key in browser code or commit it to the repository. Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
+Set `PILLCHECK_API_KEY` in the server environment. Never put the key in browser code or commit it to the repository. Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
 
 **Use a phone:** start the server with `HOST=0.0.0.0 npm start` and open `http://<this-computer's-IP>:4173` on the same Wi-Fi. Live camera access and PWA installation need HTTPS or `localhost`.
 
 ## Scan a photo
 
 1. Open **Check a dose** and start the live camera, or choose **Upload**.
-2. Live outlines run locally. Capturing or selecting a photo resizes it and sends a JPEG to an external service for processing with our detection model. The service may retain submitted photos and prompts; avoid including labels, faces, or personal documents.
+2. Live outlines run locally. Capturing or selecting a photo resizes it and sends a JPEG to an external service for processing with our detection model. Avoid including labels, faces, or personal documents.
 3. Review the visual suggestion, then compare every pill with its pharmacy label and saved plan. The model output is unverified and cannot authorize a dose. Confirm manually before logging.
 
 ## What the scan actually does
@@ -27,7 +27,7 @@ Set `NVIDIA_API_KEY` in the server environment. Never put the key in browser cod
 - **Live outlines:** browser-based background segmentation, morphology, and connected components. It can mistake other objects for pills or miss touching pills.
 - **Visual suggestion:** the server proxies the photo to an external service for processing with our detection model. It may describe appearance, transcribe a visible imprint, or suggest possibilities; there is no automatic identity-to-plan match.
 - **Limits:** our detection model can misread an imprint or invent an identity. It is not a clinical pill identifier, chemical assay, counterfeit check, or proof of a current product’s appearance.
-- **Privacy:** the browser resizes photos and converts them to JPEG before upload. PillCheck does not persist the image. The external service may retain submitted photos and prompts.
+- **Privacy:** the browser resizes photos and converts them to JPEG before upload. PillCheck does not persist the image.
 - **Retained model:** the DINOv2 weights and evaluation report in `public/models/` remain for research history, but the app does not load or call that model.
 
 ## Retained model evaluation
@@ -62,7 +62,7 @@ Bottle OCR/barcode scanning; automated imprint OCR; arbitrary organizer detectio
 
 ## Data and privacy
 
-Plans and logs are stored unencrypted in browser localStorage. Someone using the same browser profile can read them, and storage can be cleared. Export backups carefully. Each selected photo is resized in the browser and sent through the PillCheck server to an external service for processing with our detection model. PillCheck does not persist photos, but the service may retain submitted content. User-triggered medication search sends the entered name/NDC to NLM; browser speech may process spoken text externally. PillCheck does not run analytics or tracking and has no remote patient database.
+Plans and logs are stored unencrypted in browser localStorage. Someone using the same browser profile can read them, and storage can be cleared. Export backups carefully. Each selected photo is resized in the browser and sent through the PillCheck server to an external service for processing with our detection model. PillCheck does not persist photos. User-triggered medication search sends the entered name/NDC to NLM; browser speech may process spoken text externally. PillCheck does not run analytics or tracking and has no remote patient database.
 
 Logging is self-reported and does not prove swallowing. Historical schedule edits can change past chart denominators; dates before a newly added medication's start date are excluded. Use one active entry tab; localStorage is not a transactional multi-user database.
 
