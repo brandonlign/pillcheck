@@ -1,7 +1,7 @@
 // Offline support. The app shell is network-first (always fresh when online);
 // the model, references, fonts and runtime are cache-first after first use.
 // Bump ASSETS whenever public/models changes so phones fetch the new model.
-const SHELL = "pillcheck-shell-v4";
+const SHELL = "pillcheck-shell-v5";
 const ASSETS = "pillcheck-assets-finetune-v2";
 const shell = ["/", "/index.html", "/style.css", "/fonts.css", "/app.js", "/core.js", "/icons.js", "/recognition.js", "/recognition-core.js", "/icon.svg", "/manifest.webmanifest"];
 

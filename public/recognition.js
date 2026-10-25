@@ -38,8 +38,8 @@ export async function loadRecognition(progress = () => {}) {
     });
   return loading;
 }
-export async function getCatalog() {
-  await loadRecognition();
+export async function getCatalog(progress = () => {}) {
+  await loadRecognition(progress);
   return manifest;
 }
 function canvas(width, height) {

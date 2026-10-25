@@ -1,5 +1,5 @@
 import { recognizePhoto, getCatalog, referenceStyle } from "./recognition.js";
-import { evaluateScan, productNdc } from "./recognition-core.js";
+import { detectPills, evaluateScan, productNdc } from "./recognition-core.js";
 import { lucide } from "./icons.js";
 import {
   SLOTS,
@@ -161,6 +161,13 @@ let scan = null,
   scanVersion = 0,
   scanLabels = {},
   visionEvaluation = null;
+let cameraStream = null,
+  cameraRequest = 0,
+  cameraFrameToken = 0,
+  cameraFrameId = 0,
+  cameraError = "",
+  exampleError = "",
+  exampleBusy = false;
 fetch("/models/evaluation.json")
   .then((r) => (r.ok ? r.json() : null))
   .then((v) => {
@@ -190,7 +197,19 @@ function weekStart() {
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return d;
 }
+function stopCamera() {
+  cameraRequest++;
+  cameraFrameToken++;
+  if (cameraFrameId) cancelAnimationFrame(cameraFrameId);
+  cameraFrameId = 0;
+  if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+  cameraStream = null;
+}
 function resetCheck() {
+  stopCamera();
+  cameraError = "";
+  exampleError = "";
+  exampleBusy = false;
   scanVersion++;
   scan = null;
   scanBusy = false;
@@ -208,6 +227,7 @@ function resetCheck() {
   photoUrl = null;
 }
 function nav(next) {
+  if (page === "check" && next !== "check") stopCamera();
   page = next;
   result = null;
   if (next === "today") viewDay = dayKey();
@@ -304,12 +324,13 @@ ${NAV.filter(([id]) => id !== "check")
 <p class="footer">PillCheck double-checks doses; it is not medical advice. Always follow your prescription and ask a pharmacist when unsure.</p></main></div></div>
 <nav class="tabbar" aria-label="Main navigation">${NAV.map(([id, ic, label]) => `<button class="${current === id ? "active" : ""} ${id === "check" ? "scan-tab" : ""}" data-page="${id}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span></button>`).join("")}</nav>`;
   bind();
+  if (cameraStream && page === "check") connectCameraPreview();
 }
 function welcome() {
   return `<main class="welcome" id="main"><div class="welcome-inner">
 <div class="welcome-hero"><img src="/icon.svg" alt=""><h1>${state.onboarded ? "How PillCheck works" : "Welcome to PillCheck"}</h1><p>A second pair of eyes for every dose.</p></div>
 <div class="card" style="display:grid;gap:22px;padding:22px">
-<div class="feature">${art("camera", 46)}<div><b>Check a dose with one photo</b><p>Spread the pills out and take a picture. Each pill is recognized in about a second.</p></div></div>
+<div class="feature">${art("camera", 46)}<div><b>Check a dose with the live camera</b><p>See pill outlines update in the camera preview, then capture a frame to compare each pill with the reference library.</p></div></div>
 <div class="feature">${art("question", 46)}<div><b>Says “not sure” instead of guessing</b><p>Look-alike or unclear pills are flagged, so you know to check the bottle or ask a pharmacist.</p></div></div>
 <div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help, with large text and read-aloud.</p></div></div>
 <div class="feature">${art("lock", 46)}<div><b>Private by design</b><p>Photos never leave your device. No account, no ads, works offline.</p></div></div>
@@ -453,7 +474,7 @@ function scanSteps() {
       (s, i) =>
         `<div class="step ${i < stage ? "done" : i === stage ? "now" : ""}"><span class="dot">${i < stage ? icon("check") : ""}</span>${s}</div>`,
     )
-    .join("")}</div>`;
+    .join("")}<p class="caption" style="margin:4px 16px 12px">${esc(scanProgress || "Preparing the photo…")}</p></div>`;
 }
 function checkPage() {
   const p = patient(),
@@ -463,11 +484,15 @@ function checkPage() {
   let body;
   if (scan && result && !scanBusy)
     body = `<div class="viewfinder" style="aspect-ratio:auto;min-height:200px;margin-top:14px"><img src="${esc(scan.annotated)}" alt="Your photo with a box around each pill" style="position:static;max-height:300px"></div><div class="section">${resultHtml()}</div>${scan.quality.length ? `<div class="section notice orange">${art("warning", 32)}<div><b>Photo tips</b><p>${scan.quality.map(esc).join(" ")}</p></div></div>` : ""}<div class="section"><div class="section-head"><h2>What we found</h2><button class="link" data-page="about">How accurate?</button></div>${foundList()}</div>${planned}`;
-  else if (scanBusy || photoUrl)
-    body = `<div class="viewfinder ${scanBusy ? "busy" : ""}" style="margin-top:14px">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being checked">` : ""}<span class="corners"></span></div><div class="section">${scanBusy ? scanSteps() : `<div class="notice">${art("warning", 32)}<div><b>${esc(scanProgress || "Ready")}</b></div></div>`}</div>`;
+  else if (cameraStream)
+    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only; they do not identify medicine. Capture a frame to compare with the on-device reference library.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
+  else if (exampleBusy || scanBusy || photoUrl)
+    body = `<div class="viewfinder ${scanBusy || exampleBusy ? "busy" : ""}" style="margin-top:14px">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being checked">` : ""}<span class="corners"></span></div><div class="section">${scanBusy || exampleBusy ? scanSteps() : `<div class="notice">${art("warning", 32)}<div><b>${esc(scanProgress || "Ready")}</b></div></div>`}</div>`;
   else
-    body = `<label class="viewfinder" for="dose-photo" id="dropzone" style="margin-top:14px;cursor:pointer"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread the pills on a plain surface"}</b><span>Keep them apart with imprints up, in good light. Tap to open the camera, or drop a photo here.</span></span></label>
-<div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><label class="shutter" for="dose-photo" aria-label="Take a photo">${icon("camera")}</label><button class="side-action" data-mode="${scanMode === "dose" ? "single" : "dose"}" aria-label="Switch to ${scanMode === "dose" ? "one-pill close-up" : "several pills"}"><span class="ico">${icon(scanMode === "dose" ? "pill" : "grid-3x3")}</span>${scanMode === "dose" ? "Several pills" : "One pill"}</button></div>
+    body = `<div class="viewfinder" id="dropzone" style="margin-top:14px"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread the pills on a plain surface"}</b><span>Keep them apart with imprints up, in good light. Start the live camera or upload a photo.</span></span></div>
+${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
+${exampleError ? `<div class="section notice orange" role="alert">${art("warning", 32)}<div><b>Test photo could not be loaded</b><p>${esc(exampleError)}</p></div></div>` : ""}
+<div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="start-camera" aria-label="Start live camera">${icon("camera")}</button><button class="side-action" data-mode="${scanMode === "dose" ? "single" : "dose"}" aria-label="Switch to ${scanMode === "dose" ? "one-pill close-up" : "several pills"}"><span class="ico">${icon(scanMode === "dose" ? "pill" : "grid-3x3")}</span>${scanMode === "dose" ? "Several pills" : "One pill"}</button></div>
 <div class="section card" style="text-align:center"><b>No pills handy?</b><p class="muted small">Try it on real held-out research photos.</p><div class="demo-row"><button class="btn sm" data-action="example-single">${icon("pill")}Test photo</button><button class="btn sm" data-action="example-dose">${icon("sparkles")}Two-pill scene</button></div></div>${planned}`;
   return (
     topbar("Scan a dose", {
@@ -478,6 +503,168 @@ function checkPage() {
     `<input id="dose-photo" type="file" accept="image/*" capture="environment"><input id="dose-library" type="file" accept="image/*">` +
     body
   );
+}
+function cameraErrorText(error) {
+  if (error?.name === "NotAllowedError" || error?.name === "PermissionDeniedError")
+    return "Camera access was blocked. Allow camera access in your browser settings, then try again.";
+  if (error?.name === "NotFoundError" || error?.name === "DevicesNotFoundError")
+    return "No camera was found. Upload a photo instead.";
+  if (error?.name === "NotReadableError" || error?.name === "TrackStartError")
+    return "The camera is busy in another app. Close that app or upload a photo.";
+  if (error?.name === "SecurityError")
+    return "Live camera access requires HTTPS or localhost. Upload a photo instead.";
+  return "The camera could not start. Check browser permissions or upload a photo.";
+}
+async function startCamera() {
+  stopCamera();
+  cameraError = "";
+  exampleError = "";
+  exampleBusy = false;
+  scanVersion++;
+  scanBusy = false;
+  scan = null;
+  result = null;
+  scanProgress = "";
+  photo = null;
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  photoUrl = null;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    cameraError = "Live camera access is unavailable in this browser. Upload a photo instead.";
+    render();
+    return;
+  }
+  const request = ++cameraRequest;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 960 },
+      },
+    });
+    if (request !== cameraRequest || page !== "check") {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    cameraStream = stream;
+    render();
+  } catch (error) {
+    if (request !== cameraRequest) return;
+    cameraError = cameraErrorText(error);
+    toast(cameraError);
+    render();
+  }
+}
+function connectCameraPreview() {
+  const stream = cameraStream,
+    video = $("#camera-video"),
+    overlay = $("#camera-overlay");
+  if (!stream || !video || !overlay) return;
+  if (cameraFrameId) cancelAnimationFrame(cameraFrameId);
+  const token = ++cameraFrameToken,
+    overlayContext = overlay.getContext("2d"),
+    detectorCanvas = document.createElement("canvas"),
+    detectorContext = detectorCanvas.getContext("2d", {
+      willReadFrequently: true,
+    });
+  let lastDetection = -Infinity,
+    components = [],
+    quality = [];
+  video.srcObject = stream;
+  video.play().catch(() => {
+    const status = $("#camera-status");
+    if (status) status.textContent = "Tap the preview to start the camera.";
+  });
+  const draw = (now) => {
+    if (
+      token !== cameraFrameToken ||
+      stream !== cameraStream ||
+      !video.isConnected
+    )
+      return;
+    if (video.readyState >= 2 && video.videoWidth) {
+      if (
+        overlay.width !== video.videoWidth ||
+        overlay.height !== video.videoHeight
+      ) {
+        overlay.width = video.videoWidth;
+        overlay.height = video.videoHeight;
+      }
+      if (now - lastDetection >= 400) {
+        lastDetection = now;
+        const width = Math.min(480, video.videoWidth),
+          height = Math.max(
+            1,
+            Math.round((video.videoHeight * width) / video.videoWidth),
+          );
+        detectorCanvas.width = width;
+        detectorCanvas.height = height;
+        detectorContext.drawImage(video, 0, 0, width, height);
+        try {
+          const detected = detectPills(
+            detectorContext.getImageData(0, 0, width, height),
+          );
+          components = detected.components;
+          quality = detected.quality;
+        } catch {
+          components = [];
+          quality = [];
+        }
+      }
+      overlayContext.clearRect(0, 0, overlay.width, overlay.height);
+      overlayContext.lineWidth = Math.max(3, video.videoWidth / 420);
+      overlayContext.strokeStyle = "#4df0a5";
+      overlayContext.fillStyle = "rgba(11, 123, 76, .9)";
+      overlayContext.font = `600 ${Math.max(18, video.videoWidth / 48)}px system-ui`;
+      const scaleX = video.videoWidth / detectorCanvas.width,
+        scaleY = video.videoHeight / detectorCanvas.height;
+      components.forEach((box, i) => {
+        const x = box.x * scaleX,
+          y = box.y * scaleY,
+          width = box.width * scaleX,
+          height = box.height * scaleY;
+        overlayContext.strokeRect(x, y, width, height);
+        overlayContext.fillRect(x, Math.max(0, y - 30), 42, 28);
+        overlayContext.fillStyle = "#fff";
+        overlayContext.fillText(String(i + 1), x + 9, Math.max(21, y - 9));
+        overlayContext.fillStyle = "rgba(11, 123, 76, .9)";
+      });
+      const status = $("#camera-status");
+      if (status) {
+        const label = components.length
+          ? `${components.length} object${components.length === 1 ? "" : "s"} in view`
+          : quality.length
+            ? "Adjust the background or pill spacing"
+            : "Looking for separate objects…";
+        if (status.textContent !== label) status.textContent = label;
+      }
+    }
+    cameraFrameId = requestAnimationFrame(draw);
+  };
+  cameraFrameId = requestAnimationFrame(draw);
+}
+async function captureLivePhoto() {
+  const video = $("#camera-video");
+  if (!cameraStream || !video?.videoWidth) {
+    toast("The camera is still starting. Try again in a moment.");
+    return;
+  }
+  const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight)),
+    canvas = document.createElement("canvas");
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.92),
+  );
+  if (!blob) {
+    toast("The camera frame could not be captured. Try again.");
+    return;
+  }
+  stopCamera();
+  cameraError = "";
+  setPhoto(blob);
 }
 async function analyzePhoto() {
   if (!photo || scanBusy) return;
@@ -519,19 +706,46 @@ async function analyzePhoto() {
   }
 }
 async function useExample(multiple) {
+  if (exampleBusy) return;
   const exampleVersion = ++scanVersion;
+  exampleError = "";
+  exampleBusy = true;
   scanBusy = false;
   scan = null;
   result = null;
+  scanProgress = "Loading test photo…";
+  render();
   try {
     const file = multiple ? "/examples/dose-two.jpg" : "/examples/pill-1.jpg";
-    const response = await fetch(file);
+    const [response, manifestResponse] = await Promise.all([
+      fetch(file),
+      fetch("/examples/manifest.json"),
+    ]);
     if (!response.ok) throw Error("The example images are not available yet.");
-    const blob = await response.blob();
-    const samples = await (await fetch("/examples/manifest.json")).json();
-    const catalog = await getCatalog();
+    if (!response.headers.get("content-type")?.startsWith("image/"))
+      throw Error("The test photo URL did not return an image. Reload the app and try again.");
+    if (!manifestResponse.ok)
+      throw Error("The test photo details could not be loaded. Reload and try again.");
+    const [blob, samples] = await Promise.all([
+      response.blob(),
+      manifestResponse.json(),
+    ]);
+    if (!Array.isArray(samples) || samples.length < (multiple ? 2 : 1))
+      throw Error("The test photo details are incomplete. Reload and try again.");
+    scanProgress = "Loading the on-device model…";
+    render();
+    const catalog = await getCatalog((message) => {
+      if (exampleVersion !== scanVersion) return;
+      scanProgress = message;
+      if (page === "check") render();
+    });
     if (exampleVersion !== scanVersion) return;
     const demonstration = samples.slice(0, multiple ? 2 : 1);
+    if (
+      !Array.isArray(catalog.catalog) ||
+      demonstration.some((sample) => !catalog.catalog.some((entry) => entry.id === sample.id))
+    )
+      throw Error("The test photo does not match the installed recognition library. Reload the app and try again.");
     const demoId = "demo-vision";
     const shapes = ["Capsule", "Round"],
       tints = ["Orange", "Blue"];
@@ -570,9 +784,17 @@ async function useExample(multiple) {
     photo = blob;
     photoUrl = URL.createObjectURL(blob);
     scanMode = multiple ? "dose" : "single";
+    exampleError = "";
+    exampleBusy = false;
+    scanProgress = "";
     await analyzePhoto();
   } catch (e) {
-    toast(e.message);
+    if (exampleVersion !== scanVersion) return;
+    exampleBusy = false;
+    scanProgress = "";
+    exampleError = e.message || "Check your connection and reload the page, then try again.";
+    toast(exampleError);
+    if (page === "check") render();
   }
 }
 function organizer() {
@@ -1031,6 +1253,10 @@ function setPhoto(f) {
   if (!f) return;
   if (!f.type.startsWith("image/")) return toast("Choose an image file.");
   if (f.size > 15 * 1024 * 1024) return toast("Please choose a photo under 15 MB.");
+  stopCamera();
+  cameraError = "";
+  exampleError = "";
+  exampleBusy = false;
   if (photoUrl) URL.revokeObjectURL(photoUrl);
   scanVersion++;
   scan = null;
@@ -1158,7 +1384,7 @@ function bind() {
     retake: () => {
       resetCheck();
       render();
-      $("#dose-photo")?.click();
+      startCamera();
     },
     "go-family": () => nav("family"),
     "add-med": () => medicationForm(),
@@ -1167,6 +1393,13 @@ function bind() {
     report,
     export: exportData,
     "scan-photo": analyzePhoto,
+    "start-camera": startCamera,
+    "capture-live": captureLivePhoto,
+    "stop-camera": () => {
+      stopCamera();
+      cameraError = "";
+      render();
+    },
     "show-model-details": () => {
       const details = $("#model-details");
       if (details) {
@@ -1221,7 +1454,12 @@ function bind() {
       $("#med-search").setSelectionRange(pos, pos);
     };
   for (const id of ["#dose-photo", "#dose-library"])
-    if ($(id)) $(id).onchange = (e) => setPhoto(e.target.files[0]);
+    if ($(id))
+      $(id).onchange = (e) => {
+        const file = e.target.files[0];
+        e.target.value = "";
+        setPhoto(file);
+      };
   const zone = $("#dropzone");
   if (zone) {
     zone.ondragover = (e) => {
@@ -1318,6 +1556,14 @@ window.addEventListener("storage", (e) => {
 window
   .matchMedia("(prefers-color-scheme: dark)")
   .addEventListener("change", () => (state.theme || "system") === "system" && render());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && cameraStream) {
+    stopCamera();
+    cameraError = "The live camera stopped when you left this page.";
+    if (page === "check") render();
+  }
+});
+window.addEventListener("pagehide", stopCamera);
 render();
 
 async function connectPill(id) {
