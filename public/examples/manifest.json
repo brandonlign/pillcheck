@@ -1,38 +1,46 @@
 [
   {
     "file": "/examples/pill-1.jpg",
-    "id": "00004-0800-85_491E24C1",
-    "ndc": "00004-0800",
-    "sourceImage": "fcn_mix_weight/dc_224/4386.jpg",
+    "id": "39822-0205-01_7F1C3FB1",
+    "ndc": "39822-0205",
+    "sourceImage": "fcn_mix_weight/dc_224/4205.jpg",
     "split": "test",
     "accepted": true,
-    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+    "score": 0.9335,
+    "margin": 0.5012,
+    "selected": "Correct, confidently accepted v2 test prediction chosen after evaluation for illustration (high margin, varied colours); not a random sample and not used to calculate metrics."
   },
   {
     "file": "/examples/pill-2.jpg",
-    "id": "00007-4471-20_7618BB55",
-    "ndc": "00007-4471",
-    "sourceImage": "fcn_mix_weight/dc_224/75.jpg",
+    "id": "00093-0576-06_6026B005",
+    "ndc": "00093-0576",
+    "sourceImage": "fcn_mix_weight/dc_224/3557.jpg",
     "split": "test",
     "accepted": true,
-    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+    "score": 0.9551,
+    "margin": 0.4937,
+    "selected": "Correct, confidently accepted v2 test prediction chosen after evaluation for illustration (high margin, varied colours); not a random sample and not used to calculate metrics."
   },
   {
     "file": "/examples/pill-3.jpg",
-    "id": "00009-0055-01_CA1DE53F",
-    "ndc": "00009-0055",
-    "sourceImage": "fcn_mix_weight/dc_224/1914.jpg",
+    "id": "00093-0733-01_1E210F08",
+    "ndc": "00093-0733",
+    "sourceImage": "fcn_mix_weight/dc_224/200.jpg",
     "split": "test",
     "accepted": true,
-    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+    "score": 0.9672,
+    "margin": 0.4756,
+    "selected": "Correct, confidently accepted v2 test prediction chosen after evaluation for illustration (high margin, varied colours); not a random sample and not used to calculate metrics."
   },
   {
     "file": "/examples/pill-4.jpg",
-    "id": "00029-3159-13_E418F247",
-    "ndc": "00029-3159",
-    "sourceImage": "fcn_mix_weight/dc_224/3627.jpg",
+    "id": "00093-3165-01_36231B28",
+    "ndc": "00093-3165",
+    "sourceImage": "fcn_mix_weight/dc_224/1450.jpg",
     "split": "test",
     "accepted": true,
-    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+    "score": 0.8624,
+    "margin": 0.4659,
+    "selected": "Correct, confidently accepted v2 test prediction chosen after evaluation for illustration (high margin, varied colours); not a random sample and not used to calculate metrics."
   }
 ]

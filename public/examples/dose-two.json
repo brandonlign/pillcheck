@@ -4,21 +4,25 @@
   "sources": [
     {
       "file": "/examples/pill-1.jpg",
-      "id": "00004-0800-85_491E24C1",
-      "ndc": "00004-0800",
-      "sourceImage": "fcn_mix_weight/dc_224/4386.jpg",
+      "id": "39822-0205-01_7F1C3FB1",
+      "ndc": "39822-0205",
+      "sourceImage": "fcn_mix_weight/dc_224/4205.jpg",
       "split": "test",
       "accepted": true,
-      "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+      "score": 0.9335,
+      "margin": 0.5012,
+      "selected": "Correct, confidently accepted v2 test prediction chosen after evaluation for illustration (high margin, varied colours); not a random sample and not used to calculate metrics."
     },
     {
       "file": "/examples/pill-2.jpg",
-      "id": "00007-4471-20_7618BB55",
-      "ndc": "00007-4471",
-      "sourceImage": "fcn_mix_weight/dc_224/75.jpg",
+      "id": "00093-0576-06_6026B005",
+      "ndc": "00093-0576",
+      "sourceImage": "fcn_mix_weight/dc_224/3557.jpg",
       "split": "test",
       "accepted": true,
-      "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+      "score": 0.9551,
+      "margin": 0.4937,
+      "selected": "Correct, confidently accepted v2 test prediction chosen after evaluation for illustration (high margin, varied colours); not a random sample and not used to calculate metrics."
     }
   ]
 }

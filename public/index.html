@@ -2,16 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#123c35" />
-    <title>PillCheck · A little more peace of mind</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cut" />
+    <meta name="description" content="PillCheck: double-check every dose with one photo. Private, on-device pill recognition for families and caregivers." />
+    <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>PillCheck · Double-check every dose</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/style.css" />
+    <script>
+      // Apply the saved theme and text size before first paint to avoid a flash.
+      try {
+        const s = JSON.parse(localStorage.getItem("pillcheck-v1"));
+        if (s?.theme === "light" || s?.theme === "dark") document.documentElement.dataset.theme = s.theme;
+        if (s?.large) document.documentElement.classList.add("large-text");
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="app"></div>
     <dialog id="modal"></dialog>
     <div id="toast" role="status" aria-live="polite"></div>
+    <noscript>PillCheck needs JavaScript to run its on-device recognition.</noscript>
     <script type="module" src="/app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator && location.hostname !== "")
+        window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+    </script>
   </body>
 </html>

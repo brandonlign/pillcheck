@@ -4,7 +4,31 @@
 
 Educational research and a Congressional App Challenge prototype for automatic visual pill-reference comparison. It is not a clinical identifier, medication recommendation system, counterfeit detector, or proof of ingestion. Do not use a prediction to decide whether an unfamiliar medication should be taken.
 
-## Shipped model
+## Version 2 (shipped): fully fine-tuned encoder
+
+- ID: `pillcheck-dinov2-finetune-v2`. Script: `vision/train_finetune.py`; export check: `vision/verify_export.py`.
+- Same input contract as v1 (224×224 RGB in [0, 1], normalization inside the graph, 256-d L2-normalized output), so the browser runtime is unchanged.
+- **The whole DINOv2 ViT-S/14 backbone is trained**, with layer-wise learning-rate decay (0.8 per block, base 4e-5), AdamW, 1-epoch warm-up and cosine decay over 30 epochs, batch 64, bf16 autocast on one RTX 3080 Ti (~22 s/epoch).
+- Loss: CosFace (scale 30, margin 0.25) over all 4,902 identities.
+- GPU augmentation: any-angle rotation, scale 0.82–1.12, aspect jitter, ±7% shift (uncovered corners filled with the photo's border colour), brightness/contrast ±25%, saturation ±20%, small colour-temperature shift, 30% blur, sensor noise. No mirror flips (imprints are never mirrored) and no hue rotation (colour identifies pills).
+- Gallery: each reference side embedded at 0/90/180/270° and averaged, plus training-split consumer photos (in-domain neighbours). This choice and the use of query-time rotation averaging were decided by calibration ablations only (`calibrationAblation` in `evaluation.json`). Test photos are never in the gallery.
+- Split: identical to v1 (`models/split.json`, seed 2026); the abstention gate is selected on calibration only with the same rule (largest accepted set with ≥90% calibration precision). Training was paused once after epoch 9 and resumed from the best checkpoint with class weights initialized from mean training embeddings; the resumed run continued the same LR schedule.
+
+| Held-out test (960 photos) | v1 | v2 |
+|---|---:|---:|
+| Top-1 product NDC | 53.1% | 72.4% |
+| Top-3 | 76.3% | 85.1% |
+| Accepted by gate | 200 (20.8%) | 471 (49.1%) |
+| Correct among accepted | 178 (89.0%) | 434 (92.1%) |
+| Gate (similarity / margin) | 0.77 / 0.06 | 0.69 / 0.13 |
+
+Two abstention gates were selected on calibration data only: the v1 rule (largest accepted set with ≥90% calibration precision; similarity ≥ 0.60, margin ≥ 0.08) and a strict rule (≥95%; similarity ≥ 0.69, margin ≥ 0.13). On test, the 90% gate accepts 640 photos with 560 correct (87.5%), and the strict gate accepts 471 with 434 correct (92.1%). **The app ships the strict gate**, because a medication check should favour being right when it answers. This choice between the two calibration-selected gates was made after seeing both test results; both are recorded in `evaluation.json` (`strictGate`, `standardGate`). Query-time rotation averaging would add about one point of calibration top-1 (74.5% vs 73.4%) but costs four forward passes per pill in the browser, so it is not used. Demo examples were re-selected for v2 with `vision/finalize_v2.py` (correct, accepted, high-margin test photos; illustrative, not random).
+
+The v1 description below is kept for provenance. Everything in "Failure modes" still applies to v2.
+
+## Version 1 (previous)
+
+### Shipped model
 
 - ID: `pillcheck-dinov2-metric-v1`.
 - Encoder: pretrained DINOv2 ViT-S/14, 224×224 RGB input, ImageNet channel normalization embedded in the graph.

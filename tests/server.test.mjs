@@ -34,10 +34,19 @@ test("client modules and local fonts are served", async () => {
     "/style.css",
     "/fonts.css",
     "/fonts/font-1.ttf",
+    "/icons.js",
+    "/img/pill.webp",
+    "/sw.js",
   ]) {
     const r = await fetch(base + file);
     assert.equal(r.status, 200, file);
   }
+});
+test("web app manifest is served with its media type", async () => {
+  const r = await fetch(base + "/manifest.webmanifest");
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type"), /manifest\+json/);
+  assert.equal((await r.json()).name, "PillCheck");
 });
 test("unknown paths return 404", async () =>
   assert.equal((await fetch(base + "/not-real")).status, 404));

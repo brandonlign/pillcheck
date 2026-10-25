@@ -1,6 +1,6 @@
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 const root = path.resolve(fileURLToPath(new URL("./public/", import.meta.url)));
@@ -16,12 +16,20 @@ const types = {
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
   ".png": "image/png",
+  ".webmanifest": "application/manifest+json",
+  ".f32": "application/octet-stream",
+  ".onnx": "application/octet-stream",
 };
 const server = http.createServer(async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader("Cache-Control", "no-store");
   const url = new URL(req.url, "http://localhost");
+  // Fonts and the pinned runtime may be cached; everything else (including a
+  // retrained model) revalidates with Last-Modified, so updates reach browsers.
+  res.setHeader(
+    "Cache-Control",
+    /^\/(vendor|fonts)\//.test(url.pathname) ? "public, max-age=86400" : "no-cache",
+  );
   if (url.pathname.startsWith("/vendor/")) {
     const name = url.pathname.slice("/vendor/".length);
     const allowed = [
@@ -98,8 +106,16 @@ const server = http.createServer(async (req, res) => {
     );
     const file = path.resolve(root, "." + rel);
     if (!file.startsWith(root + path.sep) && file !== root) throw Error("path");
+    const info = await stat(file);
+    const modified = new Date(Math.floor(info.mtimeMs / 1000) * 1000);
+    const since = Date.parse(req.headers["if-modified-since"] || "");
+    if (since >= modified.getTime()) {
+      res.writeHead(304, { "Last-Modified": modified.toUTCString() });
+      return res.end();
+    }
     const body = await readFile(file);
     res.writeHead(200, {
+      "Last-Modified": modified.toUTCString(),
       "Content-Type": types[path.extname(file)] || "application/octet-stream",
     });
     res.end(body);
@@ -113,6 +129,9 @@ const address = `http://localhost:${port}`;
 const openBrowser = () => {
   if (process.platform === "darwin")
     spawn("open", [address], { stdio: "ignore" });
+  else if (process.platform === "win32")
+    spawn("cmd", ["/c", "start", "", address], { stdio: "ignore" });
+  else spawn("xdg-open", [address], { stdio: "ignore" });
 };
 server.on("error", async (error) => {
   if (error.code === "EADDRINUSE" && process.argv.includes("--open")) {
@@ -132,7 +151,8 @@ server.on("error", async (error) => {
   );
   process.exitCode = 1;
 });
-server.listen(port, "127.0.0.1", () => {
+// HOST=0.0.0.0 lets a phone on the same Wi-Fi open the app for a live demo.
+server.listen(port, process.env.HOST || "127.0.0.1", () => {
   console.log(`PillCheck is ready: http://localhost:${server.address().port}`);
   if (process.argv.includes("--open")) openBrowser();
 });

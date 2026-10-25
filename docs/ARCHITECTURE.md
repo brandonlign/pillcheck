@@ -4,8 +4,8 @@
 flowchart LR
   Photo[Camera or chosen photo] --> Detector[Browser: background detector]
   Detector --> Crops[Separate pill crops]
-  Crops --> ONNX[Browser: trained ONNX encoder + metric head]
-  ONNX --> Gallery[Cosine retrieval against 9804 reference sides]
+  Crops --> ONNX[Browser: fine-tuned DINOv2 ONNX encoder]
+  ONNX --> Gallery[Cosine retrieval against rotation-averaged reference sides + training photos]
   Gallery --> Gate[Similarity and runner-up gate]
   Gate --> Plan[Compare product NDCs and counts with plan]
   Plan --> Result[Match / uncertain / unexpected / missing / wrong time / duplicate]
@@ -17,7 +17,7 @@ flowchart LR
   Proxy --> NLM[NLM RxNorm]
 ```
 
-Photos, inference, embeddings, and detection run in the browser. The server exposes no photograph upload or inference endpoint. The optional RxNorm proxy uses a fixed host, length-limited input, and timeouts. Runtime JavaScript/WASM is served from an explicit three-file allowlist inside the installed `onnxruntime-web` package.
+Photos, inference, embeddings, and detection run in the browser. An optional service worker (`public/sw.js`) caches the app shell and model for offline use; the PWA manifest makes it installable on phones. The server exposes no photograph upload or inference endpoint. The optional RxNorm proxy uses a fixed host, length-limited input, and timeouts. Runtime JavaScript/WASM is served from an explicit three-file allowlist inside the installed `onnxruntime-web` package.
 
 The recognizer searches the complete library before checking the plan. Restricting retrieval to expected pills would make an incorrect pill too easy to mislabel as an expected one. Duplicate dataset identities of the same normalized product NDC are merged during ranking. Candidate NDCs are compared with the plan's labeler/product; package suffixes are not visual identities.
 
