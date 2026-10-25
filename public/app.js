@@ -273,7 +273,7 @@ function welcome() {
 <div class="feature">${art("camera", 46)}<div><b>Check a dose with the live camera</b><p>See object outlines update in the camera preview, then capture a frame for a suggestion from our detection model.</p></div></div>
 <div class="feature">${art("question", 46)}<div><b>Says “not sure” instead of guessing</b><p>Look-alike or unclear pills are flagged, so you know to check the bottle or ask a pharmacist.</p></div></div>
 <div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help, with large text and read-aloud.</p></div></div>
-<div class="feature">${art("lock", 46)}<div><b>Know where photos go</b><p>When you analyze a photo, it is sent to NVIDIA for processing with our detection model. NVIDIA’s trial service may log prompts and images. PillCheck does not save the photo.</p></div></div>
+<div class="feature">${art("lock", 46)}<div><b>Know where photos go</b><p>When you analyze a photo, it is sent to an external service for processing with our detection model. The service may retain submitted photos and prompts. PillCheck does not save the photo.</p></div></div>
 </div>
 <div class="welcome-actions">${state.onboarded ? button("Back to the app", "back-to-app", "primary block") : button("Get started", "new-profile", "primary block")}</div>
 <p class="fine">Research prototype for the Congressional App Challenge. Not a medical device.</p>
@@ -385,7 +385,7 @@ function scanSteps() {
   const stage = /Waiting/.test(scanProgress) ? 2 : /Sending/.test(scanProgress) ? 1 : 0;
   return `<div class="card steps" role="status" aria-live="polite">${[
     "Preparing a resized photo",
-    "Sending the photo to NVIDIA",
+    "Sending the photo to our detection service",
     "Analyzing with PillCheck’s detection model",
   ]
     .map(
@@ -411,14 +411,14 @@ function checkPage() {
   if (scan && result && !scanBusy)
     body = `<div class="viewfinder" style="aspect-ratio:auto;min-height:200px;margin-top:14px"><img src="${esc(photoUrl)}" alt="Photo submitted for visual analysis" style="position:static;max-height:300px"></div><div class="section">${resultHtml()}</div><div class="section card"><h2>Our detection model’s visual suggestion</h2><p class="ai-output">${esc(scan.analysis)}</p><p class="caption">This is an unverified AI suggestion, not a pill identification or medication recommendation.</p></div>${planned}`;
   else if (cameraStream)
-    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only. Capture sends this photo to our detection model through NVIDIA. NVIDIA’s trial service may log images. Avoid labels, faces, or documents; the model cannot confirm pill identity.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
+    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only. Capturing sends this photo to an external service for our detection model to analyze. The service may retain submitted photos. Avoid labels, faces, or documents; the model cannot confirm pill identity.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
   else if (scanBusy || photoUrl)
     body = `<div class="viewfinder ${scanBusy ? "busy" : ""}" style="margin-top:14px">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being checked">` : ""}<span class="corners"></span></div><div class="section">${scanBusy ? scanSteps() : `<div class="notice">${art("warning", 32)}<div><b>${esc(scanProgress || "Ready")}</b></div></div>`}</div>`;
   else
     body = `<div class="viewfinder" id="dropzone" style="margin-top:14px"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread the pills on a plain surface"}</b><span>Keep them apart with imprints up, in good light. Start the live camera or upload a photo.</span></span></div>
 ${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
 <div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="start-camera" aria-label="Start live camera">${icon("camera")}</button><button class="side-action" data-mode="${scanMode === "dose" ? "single" : "dose"}" aria-label="Switch to ${scanMode === "dose" ? "one-pill close-up" : "several pills"}"><span class="ico">${icon(scanMode === "dose" ? "pill" : "grid-3x3")}</span>${scanMode === "dose" ? "Several pills" : "One pill"}</button></div>
-<p class="caption">Analyzing a photo sends it to NVIDIA for our detection model to process. NVIDIA’s trial service may log prompts and images. Avoid including labels, faces, or personal documents.</p>
+<p class="caption">Analyzing a photo sends it to an external service for our detection model to process. The service may retain submitted photos and prompts. Avoid including labels, faces, or personal documents.</p>
 ${planned}`;
   return (
     topbar("Scan a dose", {
@@ -621,7 +621,7 @@ async function analyzePhoto() {
   try {
     const upload = await preparePhoto(photo);
     if (version !== scanVersion) return;
-    scanProgress = "Sending photo to NVIDIA…";
+    scanProgress = "Sending photo to our detection service…";
     if (page === "check") render();
     const response = await fetch("/api/recognize", {
       method: "POST",
@@ -634,7 +634,7 @@ async function analyzePhoto() {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok)
-      throw Error(payload.error || "NVIDIA image analysis is unavailable. Try again.");
+      throw Error(payload.error || "Our detection service is unavailable. Try again.");
     if (version !== scanVersion) return;
     scan = {
       model: payload.model || "PillCheck detection model",
@@ -750,13 +750,13 @@ function settings() {
       .map(([id, label]) => `<option value="${id}" ${state.language === id ? "selected" : ""}>${label}</option>`)
       .join("")}</select></label><button class="row" data-action="speak"><span class="ico-tile t-teal">${icon("volume-2")}</span><span class="grow row-title">Play a voice preview</span><span class="chev">${icon("chevron-right")}</span></button></div></div>
 <div class="section"><div class="section-head"><h2>Your data</h2></div><div class="list"><button class="row" data-action="export"><span class="ico-tile t-blue">${icon("download")}</span><span class="grow"><span class="row-title">Export a backup</span><br><span class="row-sub">Contains health information; keep it private</span></span><span class="chev">${icon("chevron-right")}</span></button><label class="row" for="import-file"><span class="ico-tile t-green">${icon("upload")}</span><span class="grow"><span class="row-title">Restore from a backup</span><br><span class="row-sub">You confirm before anything is replaced</span></span><span class="chev">${icon("chevron-right")}</span></label><button class="row" data-action="reset"><span class="ico-tile t-red">${icon("trash-2")}</span><span class="grow row-title" style="color:var(--red)">Erase all data on this device</span></button></div><input id="import-file" type="file" accept="application/json,.json"></div>
-<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow"><span class="row-title">How PillCheck works</span><br><span class="row-sub">Accuracy, limits and data sources</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Care profiles and logs stay in this browser, unencrypted. When you analyze a photo, PillCheck sends a compressed copy to NVIDIA for processing with our detection model. NVIDIA says its trial service may record prompts and images for service operation and improvement. PillCheck does not store the photo. Avoid including labels, faces, or documents.</p><p class="caption">A medicine name or NDC is sent to the U.S. National Library of Medicine only when you use lookup. No analytics or tracking.</p><p class="caption">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
+<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow"><span class="row-title">How PillCheck works</span><br><span class="row-sub">Accuracy, limits and data sources</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Care profiles and logs stay in this browser, unencrypted. When you analyze a photo, PillCheck sends a compressed copy to an external service for processing with our detection model. The service may retain submitted photos and prompts. PillCheck does not store the photo. Avoid including labels, faces, or documents.</p><p class="caption">A medicine name or NDC is sent to the U.S. National Library of Medicine only when you use lookup. PillCheck does not run analytics or tracking.</p><p class="caption">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
   );
 }
 function about() {
   return (
     topbar("How it works", { back: "settings" }) +
-    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Find separate objects</b><p>The live camera uses simple background segmentation to draw outlines. It can mistake other objects for pills or miss touching pills.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Ask our detection model for a visual description</b><p>After you capture or select a photo, the server sends a compressed copy to NVIDIA for processing. It may describe shape and color, read a visible imprint, or suggest possibilities.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check the pharmacy label</b><p>Our detection model does not verify pill identity against your plan. Treat every suggestion as uncertain and confirm each pill using its original label or a pharmacist.</p></div></div></div><div class="section notice orange">${art("warning", 32)}<div><b>Know the limits</b><p>Our detection model is not clinically validated for medication identification and can be wrong. Color and shape alone are not enough to identify a pill. Never take an unfamiliar pill because of an AI suggestion.</p></div></div><p class="caption">The previous on-device pill identity model remains in the project but is inactive. Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT).</p>`
+    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Find separate objects</b><p>The live camera uses simple background segmentation to draw outlines. It can mistake other objects for pills or miss touching pills.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Ask our detection model for a visual description</b><p>After you capture or select a photo, the server sends a compressed copy to an external service for processing. It may describe shape and color, read a visible imprint, or suggest possibilities.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check the pharmacy label</b><p>Our detection model does not verify pill identity against your plan. Treat every suggestion as uncertain and confirm each pill using its original label or a pharmacist.</p></div></div></div><div class="section notice orange">${art("warning", 32)}<div><b>Know the limits</b><p>Our detection model is not clinically validated for medication identification and can be wrong. Color and shape alone are not enough to identify a pill. Never take an unfamiliar pill because of an AI suggestion.</p></div></div><p class="caption">The previous on-device pill identity model remains in the project but is inactive. Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT).</p>`
   );
 }
 function profilesSheet() {
@@ -1047,11 +1047,11 @@ function speak() {
   }
   const lang = state.language || "en-US",
     texts = {
-      "en-US": `Hello ${patient().name}. Review the ${selectedSlot.toLowerCase()} dose against your prescription plan. A photo will be sent to NVIDIA for a visual suggestion. Check every pill against the pharmacy label; if anything is unclear, ask a caregiver or pharmacist.`,
+      "en-US": `Hello ${patient().name}. Review the ${selectedSlot.toLowerCase()} dose against your prescription plan. A photo will be sent to an external service for a visual suggestion. Check every pill against the pharmacy label; if anything is unclear, ask a caregiver or pharmacist.`,
       "es-US":
-        "La foto se enviará a NVIDIA para obtener una sugerencia visual. Compare cada pastilla con la etiqueta de la farmacia y consulte a su farmacéutico si tiene dudas.",
+        "La foto se enviará a un servicio externo para obtener una sugerencia visual. Compare cada pastilla con la etiqueta de la farmacia y consulte a su farmacéutico si tiene dudas.",
       "zh-CN":
-        "照片会发送到 NVIDIA 获取视觉建议。请将每片药与药房标签核对；如有疑问，请咨询药剂师。",
+        "照片会发送到外部服务获取视觉建议。请将每片药与药房标签核对；如有疑问，请咨询药剂师。",
     };
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(texts[lang] || texts["en-US"]);
