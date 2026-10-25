@@ -106,11 +106,8 @@ let page = state.patients.length && state.onboarded ? "today" : "welcome",
   photo = null,
   photoUrl = null,
   observations = {},
-  orgRows = 2,
-  orgWeek = dayKey(weekStart()),
   search = "",
-  lookup = [],
-  viewOrgPhoto = null;
+  lookup = [];
 let storageError = false;
 let scan = null,
   scanBusy = false,
@@ -159,10 +156,6 @@ function resetCheck() {
   scan = null;
   scanBusy = false;
   scanProgress = "";
-  if (viewOrgPhoto) {
-    URL.revokeObjectURL(viewOrgPhoto);
-    viewOrgPhoto = null;
-  }
   selectedSlot = currentSlot();
   observations = {};
   photo = null;
@@ -185,7 +178,7 @@ const initials = (name) => esc(name.slice(0, 2).toUpperCase());
 const avatarBtn = () =>
   `<button class="avatar" data-action="profiles" aria-label="Switch person (now ${esc(patient().name)})" title="Switch person">${initials(patient().name)}</button>`;
 const topbar = (title, { sub = "", actions = "", back = "" } = {}) =>
-  `${back ? `<button class="back" data-page="${back}">${icon("chevron-left")}${back === "settings" ? "Settings" : back === "meds" ? "Medications" : "Back"}</button>` : ""}<header class="topbar"><div>${sub ? `<div class="sub">${sub}</div>` : ""}<h1>${title}</h1></div><div class="top-actions">${actions}</div></header>`;
+  `${back ? `<button class="back" data-page="${back}">${icon("chevron-left")}Back</button>` : ""}<header class="topbar"><div>${sub ? `<div class="sub">${sub}</div>` : ""}<h1>${title}</h1></div><div class="top-actions">${actions}</div></header>`;
 const SLOT_ART = { Morning: "sunrise", Afternoon: "sun", Evening: "sunset", Bedtime: "night" };
 function ring(frac, size = 38, stroke = 4, color = "var(--green)") {
   const r = (size - stroke) / 2,
@@ -240,21 +233,21 @@ function render() {
   }
   const p = patient(),
     body = (
-      { today, meds: medications, check: checkPage, organizer, family, settings, about }[page] || today
+      { today, meds: medications, check: checkPage, family, settings }[page] || today
     )(),
-    current = page === "organizer" ? "meds" : page === "about" ? "settings" : page;
+    current = page;
   $("#app").innerHTML =
     `<a class="skip-link" href="#main">Skip to content</a><div class="shell">
 <nav class="sidebar" aria-label="Main navigation"><div class="brand"><img src="/icon.svg" alt="">PillCheck</div>
 <button class="btn primary side-scan" data-page="check">${icon("scan-line")}Scan a dose</button>
 ${NAV.filter(([id]) => id !== "check")
   .map(([id, ic, label]) => {
-    const on = page === "organizer" ? false : current === id;
+    const on = current === id;
     return `<button class="side-link ${on ? "active" : ""}" data-page="${id}" ${on ? 'aria-current="page"' : ""}>${icon(ic)}${label}</button>`;
   })
   .join("")}
 <div class="side-foot"><button class="profile-chip" data-action="profiles"><span class="avatar sm">${initials(p.name)}</span><span class="grow"><b>${esc(p.name)}</b><small>${p.meds.length} medication${p.meds.length === 1 ? "" : "s"} · Switch</small></span></button></div></nav>
-<div class="main"><main id="main" class="page" tabindex="-1" style="${entering ? "" : "animation:none"}">${storageError ? `<div class="notice orange" style="margin-top:12px">${art("warning", 32)}<div><b>Changes aren’t being saved</b><p>Export a backup in Settings.</p></div></div>` : ""}${body}</main></div></div>
+<div class="main"><main id="main" class="page" tabindex="-1" style="${entering ? "" : "animation:none"}">${p.demo ? `<div class="notice demo-banner"><span><b>Demo profile</b> · sample data</span><button class="link" data-action="exit-demo">Exit demo</button></div>` : ""}${storageError ? `<div class="notice orange" style="margin-top:12px">${art("warning", 32)}<div><b>Changes aren’t being saved</b><p>Export a backup in Settings.</p></div></div>` : ""}${body}</main></div></div>
 <nav class="tabbar" aria-label="Main navigation">${NAV.map(([id, ic, label]) => `<button class="${current === id ? "active" : ""} ${id === "check" ? "scan-tab" : ""}" data-page="${id}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span></button>`).join("")}</nav>`;
   bind();
   if (cameraStream && page === "check") connectCameraPreview();
@@ -267,7 +260,8 @@ function welcome() {
 <div class="feature">${art("calendar", 46)}<div><b>Stay on schedule</b><p>See what’s due today and keep a streak going.</p></div></div>
 <div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help.</p></div></div>
 </div>
-<div class="welcome-actions">${state.onboarded ? button("Back to the app", "back-to-app", "primary block") : button("Get started", "new-profile", "primary block")}</div>
+<div class="welcome-actions">${state.onboarded ? button("Back to the app", "back-to-app", "primary block") : button("Try the demo", "start-demo", "primary block", "scan-line") + button("Set up my own plan", "new-profile", "block")}</div>
+${state.onboarded ? "" : `<p class="fine">The demo has sample pills and photos, so you can try a scan without any medication.</p>`}
 <p class="fine">Research prototype</p>
 </div></main>`;
 }
@@ -294,7 +288,7 @@ function today() {
     })
     .join("")}</div>`;
   const summary = !p.meds.length
-    ? `<div class="card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:28px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">Add your first medication</h2>${button("Add medication", "add-med", "primary block", "plus")}</div>`
+    ? `<div class="card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:28px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">Nothing scheduled yet</h2><p class="muted">Your doses will show up here once you add a medication.</p>${button("Go to Medications", "go-meds", "primary block", "pill")}${button("Or try the demo", "start-demo", "block")}</div>`
     : `<div class="card summary"><span class="ring-wrap">${ring(slots.length ? taken / slots.length : 0, 92, 10)}<span class="ring-label">${taken}/${slots.length}</span></span><div class="grow"><h2>${!slots.length ? "Nothing scheduled" : taken === slots.length ? "All doses taken" : isToday ? `Next: ${next.toLowerCase()} dose` : `${slots.length - taken} not logged`}</h2><p>${taken === slots.length && slots.length ? (isToday ? "Great job today." : "Every dose was logged.") : isToday ? "Scan before you take them." : "Not logged that day."}</p>${streak ? `<span class="streak">${art("fire", 22)}${streak}-day streak</span>` : ""}</div></div>`;
   const groups = slots
     .map((s) => {
@@ -313,7 +307,7 @@ function today() {
     .join("");
   return (
     topbar(isToday ? "Today" : viewDate.toLocaleDateString("en-US", { weekday: "long" }), {
-      actions: `<button class="round-btn" data-action="add-med" aria-label="Add medication" title="Add medication">${icon("plus")}</button>${avatarBtn()}`,
+      actions: avatarBtn(),
     }) +
     weekStrip +
     `<div class="section" style="margin-top:14px">${summary}</div>` +
@@ -330,8 +324,8 @@ function medications() {
     ),
     pairs = blindSpots(p.meds);
   return (
-    topbar("Your plan", {
-      actions: `<button class="round-btn" data-action="add-med" aria-label="Add medication" title="Add medication">${icon("plus")}</button>${avatarBtn()}`,
+    topbar("Medications", {
+      actions: `${p.meds.length ? `<button class="round-btn" data-action="add-med" aria-label="Add medication" title="Add medication">${icon("plus")}</button>` : ""}${avatarBtn()}`,
     }) +
     (p.meds.length > 3
       ? `<label class="search">${icon("search")}<span class="sr-only">Find a medication</span><input id="med-search" placeholder="Search" value="${esc(search)}"></label>`
@@ -346,15 +340,14 @@ function medications() {
               `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)} <span class="muted" style="font-weight:500">${esc(m.strength)}</span></span><br><span class="row-sub">${m.quantity} × ${m.slots.join(", ")}</span></span><span class="chev">${icon("chevron-right")}</span></button>`,
           )
           .join("") || '<div class="row plain"><span class="muted">No matches</span></div>'}</div></div>`
-      : `<div class="section card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:30px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">No medications yet</h2>${button("Add medication", "add-med", "primary block", "plus")}</div>`) +
-    `<div class="section list"><button class="row" data-page="organizer"><span class="ico-tile t-purple">${icon("grid-3x3")}</span><span class="grow row-title">Pill organizer</span><span class="chev">${icon("chevron-right")}</span></button></div>`
+      : `<div class="section card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:30px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">No medications yet</h2>${button("Add medication", "add-med", "primary block", "plus")}</div>`)
   );
 }
 const referenceFor = (pill) => pill?.candidates?.[0] || null;
 const referenceName = (reference) => {
   const label = reference?.label;
   if (!label) return reference?.ndc ? `NDC ${reference.ndc}` : "Unknown reference";
-  return [label.name, label.strength].filter(Boolean).join(" · ");
+  return short([label.name, label.strength].filter(Boolean).join(" · "), 60);
 };
 const matchesMedication = (pill, medication) => {
   const reference = referenceFor(pill);
@@ -367,37 +360,50 @@ function resultHtml(meds) {
   const found = scan.pills,
     expected = meds.reduce((n, m) => n + m.quantity, 0),
     evaluation = evaluateScan(patient(), selectedSlot, scan, { day: dayKey() }),
-    canLogFromScan = evaluation.type === "matched";
+    canLogFromScan = evaluation.type === "matched",
+    identifyOnly =
+      evaluation.type === "setup" ||
+      (!expected && found.length > 0 && !scan.quality?.length);
   const rows = found
     .map((f, i) => {
       const reference = referenceFor(f),
-        matched = meds.find((m) => matchesMedication(f, m)),
-        title = matched
+        matched = identifyOnly ? null : meds.find((m) => matchesMedication(f, m)),
+        title = identifyOnly
+          ? f.accepted
+            ? `Looks like ${referenceName(reference)}`
+            : "Couldn’t identify this one"
+          : matched
           ? `Matches ${matched.name} ${matched.strength}`
           : f.accepted
             ? referenceName(reference)
             : "No confident reference match",
-        detail = matched
+        detail = identifyOnly
+          ? f.accepted
+            ? "Likely match by appearance. Confirm on the bottle label."
+            : "Not similar enough to any reference to name it."
+          : matched
           ? "Accepted reference matches the saved NDC."
           : f.accepted
             ? "Accepted reference is not in this dose’s plan. Check the bottle label."
             : "The closest catalog result did not pass the match threshold.";
-      return `<div class="row scan-pill-row">${f.thumbnail ? `<img class="scan-pill-thumb" src="${esc(f.thumbnail)}" alt="Detected pill ${i + 1}">` : pill({ color: "White", shape: "Round" })}<span class="grow"><span class="row-title">Pill ${i + 1}: ${esc(title)}</span><br><span class="row-sub${matched ? " match" : ""}">${matched ? icon("check") : ""}${esc(detail)}</span></span></div>`;
+      return `<div class="row scan-pill-row">${f.thumbnail ? `<img class="scan-pill-thumb" src="${esc(f.thumbnail)}" alt="Detected pill ${i + 1}">` : pill({ color: "White", shape: "Round" })}<span class="grow"><span class="row-title">Pill ${i + 1}: ${esc(title)}</span><br><span class="row-sub${matched ? " match" : ""}">${matched ? icon("check") : ""}${esc(detail)}</span>${identifyOnly && f.accepted ? `<br><button class="link" data-add-ref="${i}">Add to my plan</button>` : ""}</span></div>`;
     })
     .join("");
-  const logAction = !expected || evaluation.type === "duplicate"
+  const logAction = identifyOnly || !expected || evaluation.type === "duplicate"
     ? ""
     : canLogFromScan
       ? button("Log matched dose", "log-taken", "success block", "check")
       : button("Log manually", "log-manual", "success block", "check");
   const countSummary = `${found.length} pill${found.length === 1 ? "" : "s"} detected · ${expected} planned for ${selectedSlot.toLowerCase()}`;
-  const resultNote = canLogFromScan
+  const resultNote = identifyOnly
+    ? "Names come from a research model that compares appearance only. Always check the bottle label or ask a pharmacist. Add a pill to your plan to check future doses against it."
+    : canLogFromScan
     ? "Reference matches are a research aid. Check the prescription label before taking medication."
     : expected
       ? `${evaluation.detail} ${found.length ? "Review the photo and bottle label; log manually only if you took the dose." : "If you took the dose, you can record it manually."}`
       : evaluation.detail;
-  return `<div class="card found" role="status" id="check-result"><div class="found-head"><span class="found-ico ${canLogFromScan ? "good" : "warn"}">${icon(canLogFromScan ? "check" : found.length ? "triangle-alert" : "x")}</span><div><h2>${esc(evaluation.title)}</h2><p>${esc(countSummary)}</p></div></div>${rows ? `<div class="list flat">${rows}</div>` : ""}${scan.quality?.length ? `<p class="found-note">${esc(scan.quality.join(" "))}</p>` : ""}</div>
-<div class="actions-row">${logAction}<div class="btn-pair">${button("Retake", "retake", "block", "camera")}${button("Flag a problem", "log-concern", "block", "triangle-alert")}</div></div>
+  return `<div class="card found" role="status" id="check-result"><div class="found-head"><span class="found-ico ${canLogFromScan || (identifyOnly && found.every((f) => f.accepted)) ? "good" : "warn"}">${icon(identifyOnly ? "search" : canLogFromScan ? "check" : found.length ? "triangle-alert" : "x")}</span><div><h2>${esc(identifyOnly ? (found.every((f) => f.accepted) ? "Here’s what the scan found" : "Some pills weren’t recognized") : evaluation.title)}</h2><p>${esc(identifyOnly ? `${found.length} pill${found.length === 1 ? "" : "s"} detected` : countSummary)}</p></div></div>${rows ? `<div class="list flat">${rows}</div>` : ""}${scan.quality?.length ? `<p class="found-note">${esc(scan.quality.join(" "))}</p>` : ""}</div>
+<div class="actions-row">${logAction}<div class="btn-pair">${button("Retake", "retake", "block", "camera")}${identifyOnly ? "" : button("Flag a problem", "log-concern", "block", "triangle-alert")}</div></div>
 <p class="research-note">${esc(resultNote)}</p>`;
 }
 function checkPage() {
@@ -419,9 +425,11 @@ function checkPage() {
   else if (scanBusy || photoUrl)
     body = `<div class="viewfinder ${scanBusy ? "busy" : ""}">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being scanned">` : ""}<span class="corners"></span>${scanBusy ? `<span class="camera-status" id="scan-progress" role="status" aria-live="polite">${esc(scanProgress || "Starting the on-device scan…")}</span>` : ""}</div>${scanBusy ? "" : `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(scanProgress || "Something went wrong")}</b></div></div><div class="actions-row">${button("Try again", "scan-photo", "primary block", "refresh-cw")}${button("Retake", "retake", "block", "camera")}</div>`}`;
   else
-    body = `<div class="viewfinder" id="dropzone"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread pills on a plain surface"}</b><span>Imprints up, good light</span></span></div>
+    body = `<div class="viewfinder" id="dropzone"><span class="corners"></span><span class="hint">${icon("camera")}<b>${p.demo ? "Tap the camera to scan a sample dose" : scanMode === "single" ? "Fill the frame with one pill" : "Spread pills on a plain surface"}</b><span>${p.demo ? "No real camera needed in the demo" : "Imprints up, good light"}</span></span></div>
+${p.demo ? `<div class="section tight"><div class="section-head"><h2>No pills handy? Try a sample</h2></div><div class="list"><button class="row" data-sample="correct"><span class="ico-tile t-green">${icon("check")}</span><span class="grow"><span class="row-title">Correct morning dose</span><br><span class="row-sub">Two pills that match the plan</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-sample="wrong"><span class="ico-tile t-orange">${icon("triangle-alert")}</span><span class="grow"><span class="row-title">Wrong pill in the dose</span><br><span class="row-sub">A pill that isn’t in the morning plan</span></span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Research photos from the ePillID dataset, scanned by the real on-device model.</p></div>` : ""}
 ${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
-<div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="start-camera" aria-label="Start camera">${icon("camera")}</button><span class="side-action" aria-hidden="true"></span></div>${modeToggle}
+<div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="${p.demo ? "demo-scan" : "start-camera"}" aria-label="${p.demo ? "Scan a sample photo" : "Start camera"}">${icon("camera")}</button><span class="side-action" aria-hidden="true"></span></div>${modeToggle}
+
 ${planned}`;
   return (
     topbar("Scan", {
@@ -622,44 +630,6 @@ async function analyzePhoto() {
     }
   }
 }
-function organizer() {
-  const p = patient(),
-    days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(orgWeek + "T12:00:00");
-      d.setDate(d.getDate() + i);
-      return {
-        key: dayKey(d),
-        label: d.toLocaleDateString("en", { weekday: "short", day: "numeric" }),
-      };
-    }),
-    slots =
-      orgRows === 1
-        ? ["Morning"]
-        : orgRows === 2
-          ? ["Morning", "Evening"]
-          : SLOTS;
-  return (
-    topbar("Pill organizer", {
-      back: "meds",
-      actions: `<button class="round-btn" data-action="speak" aria-label="Read instructions aloud">${icon("volume-2")}</button>`,
-    }) +
-    `<div class="card grid-2"><label class="field-group">Week starting<input id="org-week" type="date" value="${orgWeek}"></label><label class="field-group">Box layout<select id="org-layout"><option value="1" ${orgRows === 1 ? "selected" : ""}>7 × 1 · Morning</option><option value="2" ${orgRows === 2 ? "selected" : ""}>7 × 2 · Morning / Evening</option><option value="4" ${orgRows === 4 ? "selected" : ""}>7 × 4 · All times</option></select></label></div>
-<div class="section card org"><div class="org-grid"><span></span>${days.map((d) => `<div class="org-label">${esc(d.label)}</div>`).join("")}${slots
-      .map(
-        (s) =>
-          `<div class="org-label">${art(SLOT_ART[s], 26)}<br>${s}</div>${days
-            .map((d) => {
-              const key = `${d.key}|${s}`,
-                status = p.organizer?.[key]?.status,
-                meds = dosesFor(p, s, d.key);
-              return `<button class="org-cell ${status || (!meds.length ? "empty" : "")}" data-cell="${key}" aria-label="${esc(d.label)} ${s}: ${status || "not checked"}"><span class="pill-stack">${meds.map((m) => pill(m)).join("") || "—"}</span><span>${status === "checked" ? "✓ Checked" : status === "concern" ? "Needs review" : meds.length ? "Tap to check" : "Empty"}</span></button>`;
-            })
-            .join("")}`,
-      )
-      .join("")}</div></div>
-<div class="section list"><label class="row" for="org-photo"><span class="ico-tile t-teal">${icon("camera")}</span><span class="grow row-title">Add a reference photo</span><span class="chev">${icon("chevron-right")}</span></label></div><input type="file" id="org-photo" accept="image/*" capture="environment">${viewOrgPhoto ? `<img src="${esc(viewOrgPhoto)}" alt="Organizer reference photo" style="width:100%;max-height:320px;object-fit:contain;border-radius:18px;margin-top:12px;background:#000">` : ""}`
-  );
-}
 function family() {
   const p = patient(),
     stats = adherence(p),
@@ -696,7 +666,7 @@ function settings() {
   const p = patient();
   return (
     topbar("Settings") +
-    `<div class="list"><button class="row" data-action="profiles"><span class="avatar">${initials(p.name)}</span><span class="grow"><span class="row-title">${esc(p.name)}</span><br><span class="row-sub">${state.patients.length} ${state.patients.length === 1 ? "person" : "people"} on this device · Switch</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-action="new-profile"><span class="ico-tile t-green">${icon("user-plus")}</span><span class="grow row-title">Add a person</span><span class="chev">${icon("chevron-right")}</span></button></div>
+    `<div class="list"><button class="row" data-action="profiles"><span class="avatar">${initials(p.name)}</span><span class="grow"><span class="row-title">${esc(p.name)}</span><br><span class="row-sub">${state.patients.length} ${state.patients.length === 1 ? "person" : "people"} on this device · Switch</span></span><span class="chev">${icon("chevron-right")}</span></button></div>
 <div class="section"><div class="section-head"><h2>Display</h2></div><div class="list"><label class="row"><span class="ico-tile t-blue">${icon("a-large-small")}</span><span class="grow row-title">Larger text</span><input id="large-text" class="switch" type="checkbox" ${state.large ? "checked" : ""}></label><div class="row"><span class="ico-tile t-purple">${icon("sun-moon")}</span><span class="grow row-title" style="white-space:nowrap">Theme</span><div class="segmented" role="group" aria-label="Appearance" style="flex:0 1 190px">${[
       ["system", "Auto"],
       ["light", "Light"],
@@ -710,17 +680,9 @@ function settings() {
       ["zh-CN", "中文"],
     ]
       .map(([id, label]) => `<option value="${id}" ${state.language === id ? "selected" : ""}>${label}</option>`)
-      .join("")}</select></label><button class="row" data-action="speak"><span class="ico-tile t-teal">${icon("volume-2")}</span><span class="grow row-title">Play a voice preview</span><span class="chev">${icon("chevron-right")}</span></button></div></div>
+      .join("")}</select></label></div><p class="caption">Sets the language of the read-aloud button on the Scan screen.</p></div>
 <div class="section"><div class="section-head"><h2>Your data</h2></div><div class="list"><button class="row" data-action="export"><span class="ico-tile t-blue">${icon("download")}</span><span class="grow row-title">Export a backup</span><span class="chev">${icon("chevron-right")}</span></button><label class="row" for="import-file"><span class="ico-tile t-green">${icon("upload")}</span><span class="grow row-title">Restore from a backup</span><span class="chev">${icon("chevron-right")}</span></label><button class="row" data-action="reset"><span class="ico-tile t-red">${icon("trash-2")}</span><span class="grow row-title" style="color:var(--red)">Erase all data on this device</span></button></div><input id="import-file" type="file" accept="application/json,.json"></div>
-<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow row-title">How PillCheck works</span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Your medication plan stays in this browser. Pill photos are analyzed on this device and aren’t uploaded.</p></div>`
-  );
-}
-function about() {
-  return (
-    topbar("How it works", { back: "settings" }) +
-    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Snap the dose</b><p>Spread the pills out on a plain surface with space between them.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Compare pill appearances</b><p>The on-device model compares each detected pill with a library of known references. It marks uncertain matches instead of guessing.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check against your plan</b><p>PillCheck compares accepted pill references and counts with the bottle NDCs and quantities you saved.</p></div></div></div>
-<p class="caption">Research prototype · not a medical device.</p>
-<p class="caption">Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT). This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p>`
+<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="welcome"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow row-title">How PillCheck works</span><span class="chev">${icon("chevron-right")}</span></button>${state.patients.some((x) => x.demo) ? "" : `<button class="row" data-action="start-demo"><span class="ico-tile t-green">${icon("scan-line")}</span><span class="grow row-title">Try the demo</span><span class="chev">${icon("chevron-right")}</span></button>`}</div><p class="caption">Your medication plan stays in this browser. Pill photos are analyzed on this device and aren’t uploaded.</p><p class="caption">Research prototype · not a medical device.</p><p class="caption">Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT). This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
   );
 }
 function profilesSheet() {
@@ -748,7 +710,7 @@ function openDialog(html) {
 }
 const dialogHead = (title) =>
   `<div class="dialog-head"><h2>${title}</h2><button class="close" data-close aria-label="Close dialog">×</button></div>`;
-function medicationForm(id) {
+function medicationForm(id, prefill = {}) {
   const old = patient().meds.find((m) => m.id === id);
   const m = old || {
     name: "",
@@ -760,6 +722,7 @@ function medicationForm(id) {
     manufacturer: "",
     slots: ["Morning"],
     rx: null,
+    ...prefill,
   };
   lookup = [];
   openDialog(
@@ -886,6 +849,95 @@ function confirmDialog(title, body, fn, label = "Confirm") {
     fn();
   };
 }
+// Sample profile for trying a scan without real medication. The NDCs match the
+// bundled /examples photos (held-out ePillID research images).
+const SAMPLE_PHOTOS = {
+  correct: { file: "dose-two.jpg", mode: "dose", slot: "Morning" },
+  wrong: { file: "pill-4.jpg", mode: "single", slot: "Morning" },
+};
+function demoPatient() {
+  const back = (n) => {
+      const d = new Date();
+      d.setDate(d.getDate() - n);
+      return d;
+    },
+    med = (name, strength, color, shape, imprint, manufacturer, ndc, slots) => ({
+      id: uid(),
+      name,
+      strength,
+      quantity: 1,
+      color,
+      shape,
+      imprint,
+      manufacturer,
+      slots,
+      rx: null,
+      startDate: dayKey(back(7)),
+      ndc,
+      pillId: null,
+    }),
+    meds = [
+      med("Pancrelipase", "Lipase 5,000 units", "White", "Capsule", "PAN 5", "", "39822-0205", ["Morning"]),
+      med("Lovastatin", "20 mg", "Blue", "Round", "TEVA", "Teva", "00093-0576", ["Morning"]),
+      med("Metoprolol tartrate", "50 mg", "Pink", "Round", "93 733", "Teva", "00093-0733", ["Evening"]),
+    ],
+    logs = [];
+  for (let n = 1; n <= 6; n++)
+    for (const [slot, hour] of [["Morning", 8], ["Evening", 19]]) {
+      if (n === 3 && slot === "Evening") continue;
+      const at = back(n);
+      at.setHours(hour, 5, 0, 0);
+      logs.push({
+        id: uid(),
+        day: dayKey(at),
+        slot,
+        status: "taken",
+        at: at.toISOString(),
+        note: "Logged after a scan",
+        medications: meds
+          .filter((m) => m.slots.includes(slot))
+          .map((m) => ({ name: m.name, strength: m.strength, quantity: m.quantity })),
+        observations: {},
+        recognition: null,
+      });
+    }
+  return { id: "sample-demo", name: "Demo", demo: true, meds, logs, refills: [] };
+}
+function startDemo() {
+  let demo = state.patients.find((x) => x.demo);
+  if (!demo) {
+    demo = demoPatient();
+    state.patients.push(demo);
+  }
+  state.active = demo.id;
+  state.onboarded = true;
+  resetCheck();
+  save();
+  if ($("#modal").open) $("#modal").close();
+  nav("today");
+  toast("Demo loaded. Tap Scan morning dose to try a sample photo.");
+}
+function exitDemo() {
+  state.patients = state.patients.filter((x) => !x.demo);
+  state.active = state.patients[0]?.id || null;
+  if (!state.patients.length) state.onboarded = false;
+  resetCheck();
+  save();
+  nav(state.patients.length ? "today" : "welcome");
+}
+async function runSample(key) {
+  const sample = SAMPLE_PHOTOS[key];
+  if (!sample) return;
+  try {
+    const res = await fetch("/examples/" + sample.file);
+    if (!res.ok) throw Error();
+    selectedSlot = sample.slot;
+    scanMode = sample.mode;
+    setPhoto(await res.blob());
+  } catch {
+    toast("The sample photo could not be loaded.");
+  }
+}
 function newProfile() {
   openDialog(
     dialogHead("Who are we caring for?") +
@@ -901,7 +953,6 @@ function newProfile() {
       meds: [],
       logs: [],
       refills: [],
-      organizer: {},
     };
     state.patients.push(p);
     state.active = p.id;
@@ -939,28 +990,6 @@ function refill(id) {
     render();
     toast("Refill note saved.");
   };
-}
-function cellDialog(key) {
-  const [day, slot] = key.split("|"),
-    meds = dosesFor(patient(), slot, day);
-  openDialog(
-    dialogHead(`${esc(day)} · ${esc(slot)}`) +
-      `<p class="small muted">Compare this compartment directly with your prescription plan.</p><div class="stack section-gap">${meds.map((m) => `<div class="dose-row"><div class="pill-wrap">${pill(m)}</div><div><h3>${esc(m.name)} ${esc(m.strength)}</h3><div class="dose-desc">${m.quantity} pill(s) · ${esc(m.color)} ${esc(m.shape)} · Imprint ${esc(m.imprint || "not recorded")}</div></div></div>`).join("") || '<div class="note">No medications are scheduled for this period.</div>'}</div><label class="field-group section-gap">Review note<textarea id="cell-note" maxlength="500" rows="2">${esc(patient().organizer?.[key]?.note || "")}</textarea></label><div class="dialog-actions"><button class="btn danger" id="cell-clear">Clear mark</button><button class="btn" id="cell-concern">Needs review</button><button class="btn primary" id="cell-checked">I reviewed it</button></div>`,
-  );
-  for (const status of ["concern", "checked", "clear"])
-    $("#cell-" + status).onclick = () => {
-      patient().organizer ??= {};
-      if (status === "clear") delete patient().organizer[key];
-      else
-        patient().organizer[key] = {
-          status,
-          note: $("#cell-note").value,
-          at: new Date().toISOString(),
-        };
-      save();
-      $("#modal").close();
-      render();
-    };
 }
 function confirmManualLog() {
   if (!dosesFor(patient(), selectedSlot).length)
@@ -1101,10 +1130,6 @@ function bind() {
       (b.onclick = () => {
         if (page === "check") resetCheck();
         if (b.dataset.page === "check") selectedSlot = currentSlot();
-        if (page === "organizer" && viewOrgPhoto) {
-          URL.revokeObjectURL(viewOrgPhoto);
-          viewOrgPhoto = null;
-        }
         nav(b.dataset.page);
       }),
   );
@@ -1158,9 +1183,6 @@ function bind() {
   document
     .querySelectorAll("[data-refill]")
     .forEach((b) => (b.onclick = () => refill(b.dataset.refill)));
-  document
-    .querySelectorAll("[data-cell]")
-    .forEach((b) => (b.onclick = () => cellDialog(b.dataset.cell)));
   document.querySelectorAll("[data-patient]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -1186,7 +1208,26 @@ function bind() {
           "Remove record",
         )),
   );
+  document.querySelectorAll("[data-add-ref]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        const ref = referenceFor(scan?.pills[Number(b.dataset.addRef)]),
+          label = ref?.label;
+        medicationForm(undefined, {
+          name: label?.name ? short(label.name, 80) : "",
+          strength: label?.strength || "",
+          ndc: ref?.ndc || "",
+          manufacturer: label?.manufacturer || "",
+        });
+      }),
+  );
+  document
+    .querySelectorAll("[data-sample]")
+    .forEach((b) => (b.onclick = () => runSample(b.dataset.sample)));
   const actions = {
+    "start-demo": startDemo,
+    "demo-scan": () => runSample("correct"),
+    "exit-demo": exitDemo,
     "start-check": () => {
       resetCheck();
       selectedSlot =
@@ -1196,12 +1237,10 @@ function bind() {
       nav("check");
     },
     profiles: profilesSheet,
-    about: () => nav("about"),
     "back-to-app": () => {
       page = state.patients.length ? "today" : "welcome";
       render();
     },
-    about: () => nav("welcome"),
     "toggle-theme": () => {
       state.theme = isDark() ? "light" : "dark";
       save();
@@ -1210,7 +1249,7 @@ function bind() {
     retake: () => {
       resetCheck();
       render();
-      startCamera();
+      if (!patient().demo) startCamera();
     },
     "go-family": () => nav("family"),
     "add-med": () => medicationForm(),
@@ -1284,28 +1323,6 @@ function bind() {
       setPhoto(e.dataTransfer.files[0]);
     };
   }
-  if ($("#org-photo"))
-    $("#org-photo").onchange = (e) => {
-      const f = e.target.files[0];
-      if (!f) return;
-      if (!f.type.startsWith("image/") || f.size > 15 * 1024 * 1024)
-        return toast("Choose an image under 15 MB.");
-      if (viewOrgPhoto) URL.revokeObjectURL(viewOrgPhoto);
-      viewOrgPhoto = URL.createObjectURL(f);
-      render();
-    };
-  if ($("#org-layout"))
-    $("#org-layout").onchange = (e) => {
-      orgRows = Number(e.target.value);
-      render();
-    };
-  if ($("#org-week"))
-    $("#org-week").onchange = (e) => {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) {
-        orgWeek = e.target.value;
-        render();
-      }
-    };
   if ($("#large-text"))
     $("#large-text").onchange = (e) => {
       state.large = e.target.checked;

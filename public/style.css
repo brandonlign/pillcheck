@@ -659,6 +659,17 @@ label.row:hover {
 .notice.blue {
   background: var(--accent-soft);
 }
+.demo-banner {
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  background: var(--accent-soft);
+}
+.demo-banner b {
+  display: inline;
+}
 
 /* ---------- Pill icons (Apple Health style) ---------- */
 .pill-ico {
@@ -1250,64 +1261,6 @@ details.found[open] .chev {
   width: 100%;
   border-radius: 9px;
   background: var(--green);
-}
-
-/* ---------- Organizer ---------- */
-.org {
-  overflow-x: auto;
-}
-.org-grid {
-  display: grid;
-  grid-template-columns: 84px repeat(7, minmax(70px, 1fr));
-  gap: 6px;
-  min-width: 620px;
-}
-.org-label {
-  align-self: center;
-  text-align: center;
-  font-size: 0.75rem;
-  font-weight: 800;
-  color: var(--text-2);
-  text-transform: uppercase;
-}
-.org-cell {
-  display: grid;
-  gap: 6px;
-  justify-items: center;
-  align-content: center;
-  min-height: 84px;
-  padding: 8px 2px;
-  border-radius: 14px;
-  background: var(--card-2);
-  border: 2px solid var(--line);
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--text-2);
-}
-.org-cell.checked {
-  background: var(--green-soft);
-  border-color: var(--green);
-  color: var(--green);
-}
-.org-cell.concern {
-  background: var(--red-soft);
-  border-color: var(--red);
-  color: var(--red);
-}
-.org-cell.empty {
-  opacity: 0.45;
-}
-.org-cell .pill-stack .pill-ico {
-  width: 24px;
-  height: 24px;
-  margin-left: -8px;
-}
-.org-cell .pill-stack .pill-ico:first-child {
-  margin-left: 0;
-}
-.org-cell .pill-stack svg {
-  width: 16px;
-  height: 16px;
 }
 
 /* ---------- Forms ---------- */

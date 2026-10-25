@@ -17,6 +17,8 @@ Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**
 
 **Use a phone:** start the server with `HOST=0.0.0.0 npm start` and open `http://<this-computer's-IP>:4173` on the same Wi-Fi. Live camera access and PWA installation need HTTPS or `localhost`.
 
+**No pills handy?** On the welcome screen choose **Try the demo**. It loads a sample profile and two research photos (a correct dose and a wrong pill) that run through the real on-device model.
+
 ## How a scan works
 
 1. Open **Scan**, pick the dose time, and start the live camera or upload a photo. Live outlines are drawn in the browser.
