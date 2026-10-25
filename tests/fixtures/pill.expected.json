@@ -1,0 +1,9 @@
+{
+  "file": "/examples/pill-1.jpg",
+  "id": "00004-0800-85_491E24C1",
+  "ndc": "00004-0800",
+  "sourceImage": "fcn_mix_weight/dc_224/4386.jpg",
+  "split": "test",
+  "accepted": true,
+  "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+}

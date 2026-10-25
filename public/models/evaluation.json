@@ -1,0 +1,23 @@
+{
+  "seed": 2026,
+  "dataset": "ePillID 1.0",
+  "pillTypes": 4902,
+  "referenceImages": 9804,
+  "trainingImages": 11783,
+  "calibrationImages": 789,
+  "testImages": 960,
+  "pretrainedCalibrationTop1": 0.11026615969581749,
+  "trainedCalibrationTop1": 0.5386565272496832,
+  "testTop1": 0.53125,
+  "testAccepted": 200,
+  "testAcceptedCorrect": 178,
+  "scoreThreshold": 0.7700000000000002,
+  "marginThreshold": 0.06,
+  "note": "Image-held-out benchmark. Product-NDC retrieval merges duplicate catalog entries. The heuristic acceptance gate is selected on calibration data only. No open-world/clinical guarantee; similarity is not probability.",
+  "model": "pillcheck-dinov2-metric-v1",
+  "encoder": "DINOv2 ViT-S/14",
+  "testIdentityTop1": 0.5135416666666667,
+  "testTop3": 0.7625,
+  "calibrationAccepted": 177,
+  "calibrationAcceptedCorrect": 160
+}

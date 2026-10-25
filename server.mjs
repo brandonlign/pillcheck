@@ -11,12 +11,42 @@ const types = {
   ".svg": "image/svg+xml",
   ".json": "application/json",
   ".ttf": "font/ttf",
+  ".mjs": "text/javascript",
+  ".wasm": "application/wasm",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
 };
 const server = http.createServer(async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Cache-Control", "no-store");
   const url = new URL(req.url, "http://localhost");
+  if (url.pathname.startsWith("/vendor/")) {
+    const name = url.pathname.slice("/vendor/".length);
+    const allowed = [
+      "ort.wasm.bundle.min.mjs",
+      "ort-wasm-simd-threaded.mjs",
+      "ort-wasm-simd-threaded.wasm",
+    ];
+    if (!allowed.includes(name)) {
+      res.writeHead(404);
+      return res.end("Not found");
+    }
+    try {
+      const body = await readFile(
+        new URL("./node_modules/onnxruntime-web/dist/" + name, import.meta.url),
+      );
+      res.writeHead(200, {
+        "Content-Type": types[path.extname(name)] || "application/octet-stream",
+      });
+      res.end(body);
+    } catch {
+      res.writeHead(503);
+      res.end("Run npm ci to install the recognition runtime.");
+    }
+    return;
+  }
   if (url.pathname === "/api/drugs") {
     const q = (url.searchParams.get("q") || "").trim();
     if (q.length < 2 || q.length > 120) {

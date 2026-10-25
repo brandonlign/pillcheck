@@ -5,3 +5,9 @@ node_modules/
 *.log
 coverage/
 work/
+
+.venv/
+__pycache__/
+*.pyc
+
+models/*.pt

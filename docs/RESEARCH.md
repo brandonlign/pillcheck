@@ -1,23 +1,16 @@
-# Vision research: work that remains
+# Recognition research status
 
-No trained model, clinical evaluation, or accuracy guarantee is shipped. There are no invented study results. The working product is a guided manual review tool.
+Automated image recognition is now implemented. It replaces manual count/appearance checkboxes in the daily photo flow. The app includes real model weights, a public reference gallery, browser inference, abstention rules, a recorded split, actual evaluation, and provenance for illustrative test images.
 
-## Required milestones for image recognition
+The current detector is classical background segmentation, not a trained instance-segmentation network. Neural metric training is supervised on ePillID pill identities; backbone-specific experiments are in `vision/train.py` and `vision/train_dino.py`. No clinical or accuracy guarantee is claimed.
 
-1. Establish permitted access and licensing for a pill-image dataset; NIH C3PI is a historical project, not a reliable live catalog. Resolve label provenance and manufacturer-specific differences.
-2. Collect consented, de-identified photos of known pills and mark instance masks. Keep scenes, photographers, pill identities, and manufacturer batches separated across splits to avoid leakage.
-3. Train an instance segmentation model; evaluate crowded pills, shadows, hands, organizer dividers, and translucent lids. Measure missed pills and merged instances separately from identity classification.
-4. Train a metric-learning model using labeled front/back pairs and identity-held-out evaluation. Evaluate imprint OCR as independent evidence rather than inferring identity from color/shape.
-5. Calibrate an abstaining prediction method on a held-out calibration set. Any conformal coverage claim requires its assumptions, target population, calibration method, sample sizes, confidence intervals, and distribution-shift limitations. A nominal 99% coverage target is not a universal guarantee that confident identifications are 99% correct.
-6. Measure device-level latency and memory, evaluate offline execution, document supported devices, and integrate only once the model can abstain on unknown pills and poor images.
-7. Run a seeded-error organizer study with a fixed protocol and real recorded outcomes. Obtain consent, avoid real medication administration, and involve a pharmacist and adult supervisor. Evaluate usability with older adults and caregivers.
+Next research milestones:
 
-## Suggested evaluation record
+1. Evaluate on independently captured household photos and separate pill identities/manufacturer batches across splits. Current test images are held out by image, not identity.
+2. Train and evaluate true instance segmentation for hands, overlapping pills, organizer dividers, and translucent lids. Current connected components can miss, split, or merge objects.
+3. Add independently evaluated imprint OCR and reconcile candidate names/NDCs with a maintained source. The reference library is historical.
+4. Evaluate out-of-library pills and non-pill objects, rather than relying only on known-pill retrieval. Measure false reassurance and abstention separately.
+5. Design and validate statistical calibration before making any error-bound claim. A similarity threshold is not conformal prediction or a probability.
+6. Measure end-to-end detector-plus-recognizer performance on a seeded-error study and phone hardware, then obtain pharmacist review and consented older-adult usability evidence.
 
-For each consented test scene, record an anonymous scene ID, known pill identities/counts, lighting category, background, organizer type, split, predicted instances, prediction sets, abstentions, false reassurance, false alarms, and timing. Keep identifying images outside Git.
-
-Measure detection recall, false reassurance rate, abstention rate, identity recall on unseen types, per-condition performance, and calibration behavior. Report denominators and uncertainty. Do not promote simulated examples to measured study results.
-
-## Other product work
-
-Exact prescription-specific scheduling; tested reminders; barcode and bottle-label capture; authenticated and encrypted caregiver sync; clinician-reviewed wording; validated translated UI; encrypted storage; accessible user studies; native mobile packaging; historical schedule versioning; and automated image review remain future work.
+No seeded-error study, pharmacist review, or clinical trial has been performed. Illustrative example scenes are synthetic composites and must never be reported as a community pilot or measured real-world success rate.

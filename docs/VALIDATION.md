@@ -25,3 +25,9 @@ GitHub Actions also checks JavaScript syntax. There are no runtime package depen
 Physical camera capture, speech availability/pronunciation in every language, the downloaded backup restore round trip through a browser file picker, saved PDF pagination, phone hardware, all desktop browser combinations, accessibility with screen readers, older-adult usability, prescription-specific schedules, concurrency guarantees, remote care, or any image-recognition accuracy. No clinical trial or pharmacist review has been performed.
 
 The sample profile and all QA records are illustrative. Test results validate software rules and serving behavior, not clinical safety or the identity of any medication.
+
+## Automated recognition revision
+
+The daily photo workflow now uses actual browser neural inference and automatic foreground counting. It no longer uses manual count or appearance-match inputs. The committed ONNX model has a real-image neural smoke test, and pure tests cover ranking, NDC normalization, uncertain/extra/unexpected pills, empty images, quality flags, timing, and duplicate records. See `docs/MODEL_CARD.md` and `public/models/evaluation.json` for measured model results; software test counts are not accuracy measurements.
+
+Browser verification includes a real held-out single-pill image producing an automatic matching-plan result and a synthetic two-pill scene producing two automatically detected objects, candidate references, and an uncertainty result when a match fails the gate. After replacing baseline assets, the final DINOv2 model was checked in-browser: a single held-out image matched its sample plan (0.3 seconds with the model already loaded); the synthetic two-pill scene found two objects, retrieved both correct product references, and abstained on one ambiguous match (0.6 seconds). These are illustrative latency observations on this computer, not a phone benchmark.

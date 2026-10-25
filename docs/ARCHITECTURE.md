@@ -2,22 +2,25 @@
 
 ```mermaid
 flowchart LR
-  User[Patient / caregiver] --> UI[Browser UI]
-  UI --> Logic[Pure checklist and schedule logic]
-  UI <--> Store[LocalStorage: profiles and records]
-  Camera[Camera / chosen image] --> Memory[Tab-only reference image]
-  Memory --> UI
-  UI -->|Optional medication name or NDC| Proxy[Node localhost proxy]
+  Photo[Camera or chosen photo] --> Detector[Browser: background detector]
+  Detector --> Crops[Separate pill crops]
+  Crops --> ONNX[Browser: trained ONNX encoder + metric head]
+  ONNX --> Gallery[Cosine retrieval against 9804 reference sides]
+  Gallery --> Gate[Similarity and runner-up gate]
+  Gate --> Plan[Compare product NDCs and counts with plan]
+  Plan --> Result[Match / uncertain / unexpected / missing / wrong time / duplicate]
+  Result --> Log[Explicit self-reported taken log]
+  UI[Care UI] <--> Store[Browser localStorage]
+  Store --> Plan
+  Metadata[Bundled reference atlases and public names] --> Result
+  UI -->|Only user-triggered name or NDC search| Proxy[Node localhost proxy]
   Proxy --> NLM[NLM RxNorm]
-  UI --> Print[System print / Save as PDF]
 ```
 
-The dependency-free Node server serves the public folder and exposes one read-only endpoint, `/api/drugs?q=...`. It calls a fixed NLM hostname with length-limited query input and timeouts. It has no health-record API, database, arbitrary URL proxy, or file upload handler.
+Photos, inference, embeddings, and detection run in the browser. The server exposes no photograph upload or inference endpoint. The optional RxNorm proxy uses a fixed host, length-limited input, and timeouts. Runtime JavaScript/WASM is served from an explicit three-file allowlist inside the installed `onnxruntime-web` package.
 
-Browser state is versioned under `pillcheck-v1`. Each profile contains medication descriptions, dose logs, refill notes, and manual compartment marks. UUIDs identify records. Logs snapshot the medication names, strengths, quantities, and review observations at the time of logging. Existing logs survive plan changes. The current chart uses the current medication schedule retrospectively; historical schedule changes can therefore affect the denominator. This is a known limitation and must be fixed before longitudinal clinical use.
+The recognizer searches the complete library before checking the plan. Restricting retrieval to expected pills would make an incorrect pill too easy to mislabel as an expected one. Duplicate dataset identities of the same normalized product NDC are merged during ranking. Candidate NDCs are compared with the plan's labeler/product; package suffixes are not visual identities.
 
-A dose is one scheduled period for one profile on a local calendar date. A taken record blocks a second taken record for the same period and date. Concern records do not block later reviews. Storage events refresh other open tabs, and a final checklist check runs before logging. This is not a transactional database: truly simultaneous writes in multiple tabs can still conflict. Use one active tab for record entry.
+The neural model is loaded once per tab. A generation counter prevents a stale scan from updating a different profile after navigation. User photos remain in tab memory. Dose logs store candidate IDs, scores, margins, acceptance flags, and elapsed time; they do not store image data.
 
-The checklist is conservative but not clinical: a matching count and a manually confirmed appearance return `reviewed`. Empty/missing reports, wrong counts, uncertain appearance, previously logged periods, and mismatched periods receive separate outcomes. No result says that an image has been classified or that medication is safe to take.
-
-This prototype uses broad local-time periods, with no prescription-specific exact times, PRN schedules, tapers, liquid doses, units other than whole pills, or alternate-day plans. It should not be used for these regimens.
+Versioned state is stored under `pillcheck-v1`. Each profile has medications, dated self-reported logs, refill notes, and manual organizer marks. A taken record blocks another record for the same local date and period. A final scan-result check runs before logging. Storage events refresh other tabs, but simultaneous writes can still conflict. Use one entry tab.

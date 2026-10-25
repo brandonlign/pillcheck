@@ -1,0 +1,38 @@
+[
+  {
+    "file": "/examples/pill-1.jpg",
+    "id": "00004-0800-85_491E24C1",
+    "ndc": "00004-0800",
+    "sourceImage": "fcn_mix_weight/dc_224/4386.jpg",
+    "split": "test",
+    "accepted": true,
+    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+  },
+  {
+    "file": "/examples/pill-2.jpg",
+    "id": "00007-4471-20_7618BB55",
+    "ndc": "00007-4471",
+    "sourceImage": "fcn_mix_weight/dc_224/75.jpg",
+    "split": "test",
+    "accepted": true,
+    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+  },
+  {
+    "file": "/examples/pill-3.jpg",
+    "id": "00009-0055-01_CA1DE53F",
+    "ndc": "00009-0055",
+    "sourceImage": "fcn_mix_weight/dc_224/1914.jpg",
+    "split": "test",
+    "accepted": true,
+    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+  },
+  {
+    "file": "/examples/pill-4.jpg",
+    "id": "00029-3159-13_E418F247",
+    "ndc": "00029-3159",
+    "sourceImage": "fcn_mix_weight/dc_224/3627.jpg",
+    "split": "test",
+    "accepted": true,
+    "selected": "Correct illustrative test prediction selected after evaluation; not a random sample and not used to calculate metrics."
+  }
+]

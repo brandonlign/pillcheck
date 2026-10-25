@@ -1359,3 +1359,134 @@ dialog::backdrop {
     gap: 12px;
   }
 }
+.scan-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 0;
+  font-size: 13px;
+}
+.scan-summary span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.scan-pill {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.scan-pill-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.scan-pill-top > img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #161916;
+}
+.scan-pill-top h3 {
+  margin-bottom: 7px;
+}
+.candidate {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+}
+.candidate strong {
+  font-size: 12px;
+  line-height: 1.5;
+  display: block;
+}
+.candidate .small {
+  font-size: 10px;
+  line-height: 1.6;
+}
+.candidate .text-btn {
+  font-size: 10px;
+}
+.candidate-list .candidate + .candidate {
+  border-top: 1px solid #edf0e9;
+}
+.reference-tile {
+  display: block;
+  width: 160px;
+  height: 80px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background-color: #000;
+}
+.candidate .reference-tile {
+  width: 160px;
+  height: 80px;
+}
+.scan-progress {
+  font-size: 12px;
+  line-height: 1.6;
+  min-height: 20px;
+  color: var(--green);
+}
+.example-links {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.example-links .text-btn {
+  font-size: 11px;
+}
+.scan-empty {
+  text-align: center;
+  padding: 50px 20px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.scan-empty .step {
+  margin: 0 auto 15px;
+}
+.result.matched {
+  background: #edf4e6;
+  border-color: #cbdcbc;
+}
+.result.wrong {
+  background: #fbece6;
+  border-color: #e0b1a7;
+}
+details summary {
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+details .small {
+  line-height: 1.8;
+}
+.check-layout > .panel {
+  min-width: 0;
+}
+.capture {
+  padding: 20px;
+}
+.capture img {
+  max-height: 360px;
+}
+@media (max-width: 430px) {
+  .candidate .reference-tile {
+    width: 80px;
+  }
+  .scan-summary {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .scan-pill-top > img {
+    width: 65px;
+    height: 65px;
+  }
+}

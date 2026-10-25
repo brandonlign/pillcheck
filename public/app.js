@@ -1,3 +1,5 @@
+import { recognizePhoto, getCatalog, referenceStyle } from "./recognition.js";
+import { evaluateScan, productNdc } from "./recognition-core.js";
 import {
   SLOTS,
   dayKey,
@@ -145,6 +147,19 @@ let page = "today",
   lookup = [],
   viewOrgPhoto = null;
 let storageError = false;
+let scan = null,
+  scanBusy = false,
+  scanProgress = "",
+  scanMode = "dose",
+  scanVersion = 0,
+  scanLabels = {},
+  visionEvaluation = null;
+fetch("/models/evaluation.json")
+  .then((r) => (r.ok ? r.json() : null))
+  .then((v) => {
+    visionEvaluation = v;
+  })
+  .catch(() => {});
 function save() {
   try {
     localStorage.setItem("pillcheck-v1", JSON.stringify(state));
@@ -168,6 +183,11 @@ function weekStart() {
   return d;
 }
 function resetCheck() {
+  scanVersion++;
+  scan = null;
+  scanBusy = false;
+  scanProgress = "";
+  scanLabels = {};
   if (viewOrgPhoto) {
     URL.revokeObjectURL(viewOrgPhoto);
     viewOrgPhoto = null;
@@ -204,7 +224,7 @@ function render() {
     `<div class="shell"><aside class="sidebar"><div class="brand"><img src="/icon.svg" alt=""><span>Pill<span>Check</span></span></div><nav class="nav" aria-label="Main navigation">${navigation.map(([id, ic, label]) => `<button data-page="${id}" class="${page === id ? "active" : ""}" ${page === id ? 'aria-current="page"' : ""}>${icon(ic)}${label}</button>`).join("")}</nav><div class="side-bottom"><div class="local-badge"><span class="dot"></span> Stored on this device</div><div class="foot">A little more peace of mind.<br>Built for the people you love.</div></div></aside><main class="main"><header class="topbar"><span class="breadcrumb">Daily care / ${esc(patient().name)}</span><div class="brand mobile-brand"><img src="/icon.svg" alt="">PillCheck</div><div class="top-right"><span class="chip ${state.demo ? "demo" : ""}">${state.demo ? "Sample profile" : "Personal profile"}</span><select aria-label="Active care profile" id="patient-select" class="patient-select">${state.patients.map((x) => `<option value="${esc(x.id)}" ${x.id === p.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><div class="avatar">${esc(p.name.slice(0, 2).toUpperCase())}</div></div></header><div class="content">${storageError ? '<div class="note amber">Changes are not being saved. Export a backup in Settings.</div>' : ""}${({ today: today, meds: medications, check: checkPage, organizer: organizer, family: family, settings: settings }[page] || today)()}<footer class="footer"><span>PillCheck is a double-check aid. Follow your prescription and confirm uncertainties with your pharmacist.</span><span>Local-first · Research prototype</span></footer></div></main></div>`;
   $("#patient-select").onchange = (e) => {
     state.active = e.target.value;
-    state.demo = patient().id === "demo";
+    state.demo = patient().id.startsWith("demo");
     resetCheck();
     save();
     render();
@@ -224,7 +244,7 @@ function today() {
       button("Check a dose", "start-check", "primary", "camera"),
     ) +
     (state.demo
-      ? `<div class="intro"><span><strong>You’re exploring a sample profile.</strong> All medications, appearances, and past records here are fictional examples.</span><button class="text-btn" data-action="new-profile">Set up my own profile →</button></div>`
+      ? `<div class="intro"><span><strong>You’re exploring a sample profile.</strong> ${p.id === "demo-vision" ? "Pill photos are real research images; this dose plan is an invented demonstration." : "All medications, appearances, and past records here are fictional examples."}</span><button class="text-btn" data-action="new-profile">Set up my own profile →</button></div>`
       : "") +
     `<section class="hero"><div><div class="eyebrow">YOUR NEXT STEP</div><h2>${!p.meds.length ? "Set up your daily routine." : done === slots.length ? "Today’s routine is logged." : `${next} checklist`}</h2><p>${!p.meds.length ? "Start with your prescription label. Add the medicines and times in your existing care plan." : next ? `Your ${next.toLowerCase()} checklist is ready. Take a moment to compare your prepared pills with your saved plan.` : "You can review your history or help prepare your weekly organizer."}</p>${button(!p.meds.length ? "Add your first medication" : next ? "Start my check" : "Review my history", !p.meds.length ? "add-med" : next ? "start-check" : "go-family", "light", "arrow")}</div><div class="hero-plan"><span class="eyebrow">${next ? next.toUpperCase() : "YOUR PLAN"}</span>${(next
       ? dosesFor(p, next)
@@ -271,28 +291,137 @@ function medications() {
     `<div class="toolbar"><input id="med-search" placeholder="Find a medication…" aria-label="Find a medication" value="${esc(search)}"></div>${pairs.length ? `<div class="note amber" style="margin-bottom:22px"><strong>Look-alike notice</strong>${pairs.map(([a, b]) => `${esc(a.name)} and ${esc(b.name)}`).join("; ")} share a saved color and shape. This comparison uses your notes, not a trained vision model. Use labels and imprints; ask a pharmacist if unsure.</div>` : ""}<div class="med-list">${matches.map((m) => `<article class="med-card"><div class="pill-wrap">${pill(m)}</div><div class="grow"><h3>${esc(m.name)}</h3><div class="med-description">${esc(m.strength)} · ${m.quantity} pill${m.quantity > 1 ? "s" : ""} per scheduled dose</div><div class="med-description">${esc(m.color)} · ${esc(m.shape)} · Imprint: ${esc(m.imprint || "Not recorded")}</div><div class="med-meta">${m.slots.map((s) => `<span class="badge gray">${s}</span>`).join("")}</div><div class="med-description">${m.rx ? `RxCUI ${esc(m.rx)}` : "Entered from label"}${state.demo ? " · Example appearance" : ""}</div><div class="toolbar" style="margin:13px 0 0"><button class="text-btn" data-edit="${esc(m.id)}">Edit details</button><button class="text-btn" data-refill="${esc(m.id)}">Review refill →</button></div></div></article>`).join("")}</div>${!matches.length ? `<div class="empty-state"><h2>${p.meds.length ? "No matching medications" : "Build your care plan"}</h2><p>${p.meds.length ? "Try another name." : "Use the exact medication name, dose, and schedule on your prescription."}</p>${button("Add medication", "add-med", "primary", "plus")}</div>` : ""}<div class="note section-gap"><strong>A note on appearances</strong>Pill illustrations are based on your saved notes. They are not reference photographs or proof of identity. Confirm any refill changes with your pharmacist.</div>`
   );
 }
+function scanResultCards() {
+  if (!scan) return "";
+  return `<div class="scan-summary"><strong>${scan.mode === "single" ? "Single-pill close-up" : scan.pills.length + " objects found"}</strong><span>${(scan.elapsedMs / 1000).toFixed(1)}s · On-device inference${scan.mode === "single" ? " · One pill assumed" : ""}</span></div>${scan.quality.length ? `<div class="note amber">${scan.quality.map(esc).join("<br>")}</div>` : ""}${scan.pills.map((p, i) => `<article class="scan-pill"><div class="scan-pill-top"><img src="${esc(p.thumbnail)}" alt="Detected object ${i + 1}"><div><h3>Pill ${i + 1}</h3><span class="badge ${p.accepted ? "green" : "amber"}">${p.accepted ? "Visual match" : "Not sure"}</span></div></div><div class="candidate-list">${p.candidates.map((c, j) => `<div class="candidate"><span class="reference-tile" style="${referenceStyle(c.catalogIndex)}" role="img" aria-label="NIH reference front and back"></span><div class="grow"><strong>${esc(c.label ? c.label.name + " " + c.label.strength : "NDC " + c.ndc)}</strong><div class="small muted">${j === 0 ? "Closest reference" : "Alternative"} · similarity ${c.score.toFixed(3)}</div><button class="text-btn" data-connect-pill="${esc(c.id)}">Use this bottle reference →</button></div></div>`).join("")}</div></article>`).join("")}`;
+}
 function checkPage() {
   const p = patient(),
     meds = dosesFor(p, selectedSlot);
   return (
     heading(
       "Check a dose.",
-      "Compare your prepared dose with the plan you entered.",
+      "One photo. Automatic pill detection and visual reference matching.",
       button("Read aloud", "speak", "", "volume"),
     ) +
-    `<div class="steps"><span class="step">1</span> Choose a time <span>→</span><span class="step">2</span> Compare each pill <span>→</span><span class="step">3</span> Review & log</div><div class="toolbar">${SLOTS.map((s) => `<button class="btn ${s === selectedSlot ? "primary" : ""}" data-slot="${s}">${s}${isTaken(p, s) ? " ✓" : ""}</button>`).join("")}</div><div class="check-layout"><section class="panel"><div class="panel-head"><h2>Your prepared dose</h2><span class="badge gray">Guided review</span></div><div class="capture">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Your prepared dose for manual comparison">` : `<div>${icon("camera")}<h3>Put the pills in a clear view.</h3><p>A plain background and good light can help you compare the details.</p><label class="btn" for="dose-photo">${icon("camera")} Take or choose a photo</label></div>`}</div><input id="dose-photo" type="file" accept="image/*" capture="environment" aria-label="Choose dose photo"><div class="photo-note">Your photo stays in this tab and is discarded when you leave this check. No automated pill identification is performed.</div></section><section class="panel"><div class="panel-head"><h2>${selectedSlot} checklist</h2><span class="small muted">${meds.length} medications</span></div>${isTaken(p, selectedSlot) ? '<div class="note amber" style="margin-bottom:18px"><strong>Already logged today</strong>Review the history before taking anything else.</div>' : ""}${
-      meds
-        .map((m) => {
-          const o = observations[m.id] || {};
-          return `<div class="check-item"><div class="check-top"><div class="pill-wrap">${pill(m)}</div><div><h3>${esc(m.name)} <span class="muted small">${esc(m.strength)}</span></h3><div class="med-description">Expected: ${m.quantity} · ${esc(m.color.toLowerCase())} ${esc(m.shape.toLowerCase())}<br>Imprint: ${esc(m.imprint || "not recorded")}</div></div></div><div class="check-controls"><label>Count <input type="number" min="0" max="20" step="1" inputmode="numeric" data-count="${esc(m.id)}" value="${o.count ?? ""}" placeholder="—" aria-label="${esc(m.name)} observed count"></label><label><input type="checkbox" data-appearance="${esc(m.id)}" ${o.appearance ? "checked" : ""}> Appearance matches</label><label><input type="checkbox" data-unsure="${esc(m.id)}" ${o.unsure ? "checked" : ""}> Not sure</label></div></div>`;
-        })
-        .join("") ||
-      '<div class="note">No medicines are scheduled for this period. Add the schedule from your prescription label in Medications.</div>'
-    }<div class="section-gap">${button("Review my checklist", "evaluate", "primary wide", "shield")}</div><div id="check-result">${result ? resultHtml() : ""}</div></section></div>`
+    `<div class="steps"><span class="step">1</span> Choose a time <span>→</span><span class="step">2</span> Photograph pills <span>→</span><span class="step">3</span> Review the result</div><div class="toolbar">${SLOTS.map((s) => `<button class="btn ${s === selectedSlot ? "primary" : ""}" data-slot="${s}">${s}${isTaken(p, s) ? " ✓" : ""}</button>`).join("")}</div>
+ <div class="check-layout"><section class="panel"><div class="panel-head"><h2>Your prepared dose</h2><span class="badge green">Automatic recognition</span></div><div class="capture">${scan?.annotated ? `<img src="${esc(scan.annotated)}" alt="Photo with automatic pill detection boxes">` : photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo to analyze">` : `<div>${icon("camera")}<h3>Give each pill a little space.</h3><p>Place pills apart on a plain, contrasting surface. Use clear light and keep imprints visible.</p><label class="btn primary" for="dose-photo">${icon("camera")} Take or choose a photo</label></div>`}</div>
+ <input id="dose-photo" type="file" accept="image/*" capture="environment" aria-label="Choose dose photo"><div class="toolbar section-gap"><label class="field-group grow">Photo type<select id="scan-mode"><option value="dose" ${scanMode === "dose" ? "selected" : ""}>Several separated pills</option><option value="single" ${scanMode === "single" ? "selected" : ""}>One pill, close-up</option></select></label><button class="btn primary" data-action="scan-photo" ${!photo || scanBusy ? "disabled" : ""}>${scanBusy ? "Analyzing…" : "Analyze photo"}</button></div>
+ <div class="scan-progress" role="status" aria-live="polite">${esc(scanProgress)}</div><div class="photo-note">A trained pill metric model searches 4,902 reference identities. Photos and inference stay in your browser. Research prototype; visual matches can be wrong. <button class="text-btn" data-action="show-model-details">See measured accuracy</button></div><div class="example-links"><span class="small muted">No photo handy? Opens a separate sample plan.</span><button class="text-btn" data-action="example-single">Try a real test image →</button><button class="text-btn" data-action="example-dose">Try a two-pill scene →</button></div></section>
+ <section class="panel"><div class="panel-head"><h2>${selectedSlot} plan</h2><span class="small muted">${meds.length} medication${meds.length === 1 ? "" : "s"}</span></div>${meds.map((m) => `<div class="dose-row"><div class="pill-wrap">${pill(m)}</div><div class="grow"><h3>${esc(m.name)}</h3><div class="dose-desc">${esc(m.strength)} · expected ${m.quantity}<br>${m.ndc ? "NDC " + esc(m.ndc) : '<span style="color:var(--amber)">Bottle NDC needed for automatic comparison</span>'}</div></div><button class="text-btn" data-edit="${esc(m.id)}">Edit</button></div>`).join("") || '<div class="note">Add the medications and exact bottle NDCs in your prescription plan to compare the detected pills automatically.</div>'}
+ ${scan ? `<div id="check-result">${result ? resultHtml() : ""}</div><div class="section-gap"><h2>What the camera found</h2><p class="small muted" style="margin-top:8px">Similarity is a model score, not a probability of correct identification.</p>${scanResultCards()}</div>` : `<div class="scan-empty"><span class="step">↗</span><p>Your photo results will appear here.<br>No pill counts or appearance checkboxes to fill in.</p></div>`}</section></div>
+ <details class="panel section-gap"><summary>How the recognition works & measured limits</summary><div class="stack section-gap"><p class="small">A pretrained image encoder and a pill-specific trained metric head compare image features with 9,804 front/back references from the ePillID/NIH dataset. A background-based detector locates separated pills. The detector is not a trained instance-segmentation network and does not support hands, overlapping pills, or organizer grids.</p>${visionEvaluation ? `<p class="small">Image-held-out test: ${visionEvaluation.testImages} consumer images; top-1 retrieval ${(visionEvaluation.testTop1 * 100).toFixed(1)}%. ${visionEvaluation.testAccepted} passed the conservative similarity gate; ${visionEvaluation.testAcceptedCorrect} of those had the correct dataset identity. These benchmark measurements do not establish clinical safety.</p>` : ""}<p class="small muted">A weak score or close alternative returns “not sure.” The library is historical and does not cover every manufacturer or current product. There is no 99% accuracy guarantee or automated imprint OCR. Do not take an unfamiliar pill based on this result.</p><a class="small" href="https://github.com/usuyama/ePillID-benchmark" target="_blank" rel="noopener">Reference dataset and research source ↗</a></div></details>`
   );
 }
 function resultHtml() {
-  return `<div class="result ${result.type}" role="status"><h3>${esc(result.title)}</h3><p>${esc(result.detail)}</p>${result.type === "reviewed" ? button("I took this dose · log it", "log-taken", "primary", "check") : result.type === "duplicate" ? "" : button("Save a concern in history", "log-concern", "", "plus")}</div>`;
+  return `<div class="result ${result.type}" role="status"><h3>${esc(result.title)}</h3><p>${esc(result.detail)}</p>${result.type === "matched" ? button("I took this dose · log it", "log-taken", "primary", "check") : result.type === "duplicate" ? "" : result.type === "setup" ? button("Set up pill references", "go-meds", "", "pill") : button("Save a concern in history", "log-concern", "", "plus")}</div>`;
+}
+async function analyzePhoto() {
+  if (!photo || scanBusy) return;
+  const version = ++scanVersion;
+  scanBusy = true;
+  scan = null;
+  result = null;
+  scanProgress = "Starting on-device recognition…";
+  render();
+  try {
+    const output = await recognizePhoto(photo, {
+      mode: scanMode,
+      progress: (message) => {
+        if (version !== scanVersion) return;
+        scanProgress = message;
+        if (page === "check" && $(".scan-progress"))
+          $(".scan-progress").textContent = message;
+      },
+    });
+    if (version !== scanVersion) return;
+    scan = output;
+    result = evaluateScan(patient(), selectedSlot, scan, {
+      day: dayKey(),
+      currentSlot: currentSlot(),
+    });
+    scanProgress = "Analysis complete. Review uncertain matches carefully.";
+    render();
+  } catch (e) {
+    if (version !== scanVersion) return;
+    scanProgress = e.message;
+    result = {
+      type: "uncertain",
+      title: "The photo could not be analyzed",
+      detail: e.message,
+    };
+    toast(e.message);
+  } finally {
+    if (version === scanVersion) {
+      scanBusy = false;
+      if (page === "check") render();
+    }
+  }
+}
+async function useExample(multiple) {
+  const exampleVersion = ++scanVersion;
+  scanBusy = false;
+  scan = null;
+  result = null;
+  scanProgress = "Loading the recognition model and test image…";
+  render();
+  try {
+    const file = multiple ? "/examples/dose-two.jpg" : "/examples/pill-1.jpg";
+    const response = await fetch(file);
+    if (!response.ok) throw Error("The example images are not available yet.");
+    const blob = await response.blob();
+    const samples = await (await fetch("/examples/manifest.json")).json();
+    const catalog = await getCatalog();
+    if (exampleVersion !== scanVersion) return;
+    const demonstration = samples.slice(0, multiple ? 2 : 1);
+    const demoId = "demo-vision";
+    const demoMeds = demonstration.map((sample, i) => {
+      const entry = catalog.catalog.find((c) => c.id === sample.id);
+      return {
+        id: "vision-pill-" + i,
+        name: entry?.label?.name || "Reference pill " + (i + 1),
+        strength: entry?.label?.strength || "See bottle",
+        quantity: 1,
+        slots: [currentSlot()],
+        color: "White",
+        shape: "Oval",
+        imprint: "From research reference",
+        manufacturer: entry?.label?.manufacturer || "Research sample",
+        rx: null,
+        ndc: entry?.ndc || sample.ndc,
+        pillId: sample.id,
+        startDate: dayKey(),
+      };
+    });
+    const demonstrationProfile = {
+      id: demoId,
+      name: "Vision demo",
+      meds: demoMeds,
+      logs: [],
+      refills: [],
+      organizer: {},
+    };
+    state.patients = state.patients.filter((p) => p.id !== demoId);
+    state.patients.push(demonstrationProfile);
+    state.active = demoId;
+    state.demo = true;
+    selectedSlot = currentSlot();
+    save();
+
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    photo = blob;
+    photoUrl = URL.createObjectURL(blob);
+    scanMode = multiple ? "dose" : "single";
+    scan = null;
+    result = null;
+    scanProgress = multiple
+      ? "Synthetic scene made from real held-out pill photos."
+      : "A real held-out pill image; selected as an illustrative example.";
+    render();
+    await analyzePhoto();
+  } catch (e) {
+    toast(e.message);
+  }
 }
 function organizer() {
   const p = patient(),
@@ -381,7 +510,7 @@ function settings() {
       )
       .join(
         "",
-      )}</select></div><div class="settings-row"><div><h3>Spoken guidance</h3><p>Listen to translated core check instructions. The visual interface is in English.</p></div>${button("Try voice", "speak", "", "volume")}</div></div><div class="panel section-gap"><h2>Your data, your choice</h2><div class="settings-row"><div><h3>Local backup</h3><p>Export all profiles and records as JSON. This file contains personal health information; keep it private.</p></div>${button("Export backup", "export", "", "download")}</div><div class="settings-row"><div><h3>Restore a backup</h3><p>Import a PillCheck JSON backup. You’ll review the replacement before it is saved.</p></div><label class="btn" for="import-file">Choose backup</label><input id="import-file" type="file" accept="application/json,.json" hidden></div><div class="settings-row"><div><h3>Start a personal profile</h3><p>Create an empty care plan. Sample records stay separate.</p></div>${button("New profile", "new-profile", "", "plus")}</div><div class="settings-row"><div><h3>Remove all local data</h3><p>Deletes this browser’s profiles and history, then opens a fresh sample profile.</p></div>${button("Reset this device", "reset", "danger")}</div></div><div class="panel section-gap"><h2>About this prototype</h2><div class="stack section-gap"><p class="small">Working today: prescription-plan entry, RxNorm name/NDC lookup, guided photo comparison, reported count and appearance checks, duplicate-period logging protection, look-alike notices, manual organizer review, local profiles, read-aloud guidance, and printable reports.</p><div class="note amber"><strong>Research features are not active</strong>This version does not automatically recognize pills, read imprints or bottle labels, scan barcodes, send reminders, or give a measured error guarantee. No trained vision model or clinical study is included.</div><p class="small muted">Medication records are stored in this browser’s local storage without encryption. Photos stay in tab memory. A medication name or NDC is sent to NLM only when you use lookup. No analytics or remote caregiver database is used. Browser speech services may process text outside this device.</p><p class="small muted">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p><a class="small" href="https://lhncbc.nlm.nih.gov/RxNav/APIs/api-RxNorm.getDrugs.html" target="_blank" rel="noopener">RxNorm API documentation ↗</a></div></div>`
+      )}</select></div><div class="settings-row"><div><h3>Spoken guidance</h3><p>Listen to translated core check instructions. The visual interface is in English.</p></div>${button("Try voice", "speak", "", "volume")}</div></div><div class="panel section-gap"><h2>Your data, your choice</h2><div class="settings-row"><div><h3>Local backup</h3><p>Export all profiles and records as JSON. This file contains personal health information; keep it private.</p></div>${button("Export backup", "export", "", "download")}</div><div class="settings-row"><div><h3>Restore a backup</h3><p>Import a PillCheck JSON backup. You’ll review the replacement before it is saved.</p></div><label class="btn" for="import-file">Choose backup</label><input id="import-file" type="file" accept="application/json,.json" hidden></div><div class="settings-row"><div><h3>Start a personal profile</h3><p>Create an empty care plan. Sample records stay separate.</p></div>${button("New profile", "new-profile", "", "plus")}</div><div class="settings-row"><div><h3>Remove all local data</h3><p>Deletes this browser’s profiles and history, then opens a fresh sample profile.</p></div>${button("Reset this device", "reset", "danger")}</div></div><div class="panel section-gap"><h2>About this prototype</h2><div class="stack section-gap"><p class="small">Working today: prescription-plan entry, RxNorm name/NDC lookup, on-device automated pill detection and reference recognition, duplicate-period logging protection, look-alike notices, manual organizer review, local profiles, read-aloud guidance, and printable reports.</p><div class="note amber"><strong>Recognition boundaries</strong>A trained pill recognition model is included. Automated imprint OCR, bottle-label reading, barcode scanning, organizer segmentation, remote alerts, and clinical accuracy guarantees remain unimplemented. The model can abstain and is not clinically validated.</div><p class="small muted">Medication records are stored in this browser’s local storage without encryption. Photos stay in tab memory. A medication name or NDC is sent to NLM only when you use lookup. No analytics or remote caregiver database is used. Browser speech services may process text outside this device.</p><p class="small muted">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p><a class="small" href="https://lhncbc.nlm.nih.gov/RxNav/APIs/api-RxNorm.getDrugs.html" target="_blank" rel="noopener">RxNorm API documentation ↗</a></div></div>`
   );
 }
 function openDialog(html) {
@@ -413,7 +542,7 @@ function medicationForm(id) {
         .map((c) => `<option ${m.color === c ? "selected" : ""}>${c}</option>`)
         .join(
           "",
-        )}</select></label><label class="field-group">Shape<select name="shape">${["Round", "Oval", "Capsule"].map((c) => `<option ${m.shape === c ? "selected" : ""}>${c}</option>`).join("")}</select></label><label class="field-group">Imprint (if visible)<input name="imprint" value="${esc(m.imprint)}" maxlength="60" placeholder="Letters / numbers"></label><label class="field-group">Manufacturer (optional)<input name="manufacturer" value="${esc(m.manufacturer)}" maxlength="100"></label><div class="field-group full"><span>Scheduled periods from your care plan</span><div class="checks">${SLOTS.map((s) => `<label><input name="slots" value="${s}" type="checkbox" ${m.slots.includes(s) ? "checked" : ""}>${s}</label>`).join("")}</div></div></div><p class="error" id="form-error" role="alert"></p><div class="dialog-actions">${old ? `<button type="button" class="btn danger" id="delete-med">Delete</button>` : ""}<button class="btn primary" type="submit">Save medication</button></div></form>`,
+        )}</select></label><label class="field-group">Shape<select name="shape">${["Round", "Oval", "Capsule"].map((c) => `<option ${m.shape === c ? "selected" : ""}>${c}</option>`).join("")}</select></label><label class="field-group">Imprint (if visible)<input name="imprint" value="${esc(m.imprint)}" maxlength="60" placeholder="Letters / numbers"></label><label class="field-group">Manufacturer (optional)<input name="manufacturer" value="${esc(m.manufacturer)}" maxlength="100"></label><label class="field-group full">Exact NDC from bottle (for automatic matching)<input name="ndc" value="${esc(m.ndc || "")}" maxlength="20" placeholder="e.g. 00093-0148-01"><span class="small muted">Use the exact bottle NDC. Name and strength alone do not select a pill appearance.</span></label><div class="field-group full"><span>Scheduled periods from your care plan</span><div class="checks">${SLOTS.map((s) => `<label><input name="slots" value="${s}" type="checkbox" ${m.slots.includes(s) ? "checked" : ""}>${s}</label>`).join("")}</div></div></div><p class="error" id="form-error" role="alert"></p><div class="dialog-actions">${old ? `<button type="button" class="btn danger" id="delete-med">Delete</button>` : ""}<button class="btn primary" type="submit">Save medication</button></div></form>`,
   );
   let selectedRx = m.rx;
   const medForm = $("#med-form");
@@ -481,7 +610,14 @@ function medicationForm(id) {
       slots,
       rx: selectedRx,
       startDate: old?.startDate || dayKey(),
+      ndc: fd.get("ndc").trim(),
+      pillId: old?.pillId || null,
     };
+    if (newMed.ndc && !productNdc(newMed.ndc)) {
+      $("#form-error").textContent =
+        "Use the hyphenated NDC from the bottle, or an 11-digit NDC.";
+      return;
+    }
     if (!newMed.name || !newMed.strength) {
       $("#form-error").textContent = "Enter a medication name and strength.";
       return;
@@ -611,7 +747,7 @@ function logDose(status) {
     at: new Date().toISOString(),
     note:
       status === "taken"
-        ? "Self-reported after guided checklist"
+        ? "Self-reported after automatic visual comparison"
         : result?.title || "Concern reported",
     medications: dosesFor(p, selectedSlot).map((m) => ({
       name: m.name,
@@ -619,6 +755,18 @@ function logDose(status) {
       quantity: m.quantity,
     })),
     observations: structuredClone(observations),
+    recognition: scan
+      ? {
+          model: scan.model,
+          pills: scan.pills.map((p) => ({
+            id: p.candidates[0]?.id,
+            score: p.candidates[0]?.score,
+            margin: p.margin,
+            accepted: p.accepted,
+          })),
+          elapsedMs: scan.elapsedMs,
+        }
+      : null,
   });
   save();
   resetCheck();
@@ -638,11 +786,11 @@ function speak() {
   }
   const lang = state.language || "en-US",
     texts = {
-      "en-US": `Hello ${patient().name}. Review the ${selectedSlot.toLowerCase()} dose against your prescription plan. Count each pill, compare its appearance and imprint, and select not sure if you cannot check it. This app does not identify pills. Ask a pharmacist about unfamiliar pills.`,
+      "en-US": `Hello ${patient().name}. Review the ${selectedSlot.toLowerCase()} dose against your prescription plan. Photograph the separated pills on a plain contrasting background and review the automatic results. If a result is uncertain, ask a caregiver or pharmacist for help. The experimental image model can suggest visual references, but can be wrong. Ask a pharmacist about unfamiliar pills.`,
       "es-US":
-        "Compare su dosis con las instrucciones de su receta. Cuente cada pastilla y revise su apariencia y las letras o números impresos. Si tiene dudas, seleccione la opción de duda y consulte a su farmacéutico. Esta aplicación no identifica pastillas.",
+        "Fotografíe las pastillas separadas sobre un fondo liso y revise los resultados automáticos. Si el resultado es incierto, consulte a su farmacéutico. El modelo de reconocimiento es experimental y puede equivocarse.",
       "zh-CN":
-        "请根据处方核对本次用药。数清每种药片，并检查外观和刻印。如果不能确定，请选择不确定，并咨询药剂师。本应用不能识别药片。",
+        "请将药片分开放在纯色背景上拍照，并查看自动识别结果。如果结果不确定，请咨询药剂师。本应用的图像识别模型处于研究阶段，可能出错。",
     };
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(texts[lang] || texts["en-US"]);
@@ -665,12 +813,12 @@ function report() {
     el.className = "report-only";
     document.body.append(el);
   }
-  el.innerHTML = `<h1>PillCheck · Weekly care record</h1><p>${esc(p.name)} · Generated ${esc(new Date().toLocaleString())}${p.id === "demo" ? " · FICTIONAL SAMPLE PROFILE" : ""}</p><p>${stats.taken} of ${stats.expected} scheduled periods self-reported taken (${stats.percent}%). Today counts periods through ${currentSlot()}.</p><h2>Current medication plan</h2><table><thead><tr><th>Medication</th><th>Strength</th><th>Quantity</th><th>Periods</th></tr></thead><tbody>${p.meds.map((m) => `<tr><td>${esc(m.name)}</td><td>${esc(m.strength)}</td><td>${m.quantity}</td><td>${m.slots.join(", ")}</td></tr>`).join("")}</tbody></table><h2>Past seven days</h2><table><thead><tr><th>Date</th><th>Period</th><th>Reported status</th><th>Note</th></tr></thead><tbody>${logs.map((l) => `<tr><td>${esc(l.day)}</td><td>${esc(l.slot)}</td><td>${esc(l.status)}</td><td>${esc(l.note)}</td></tr>`).join("")}</tbody></table><h2>Refill notes</h2>${
+  el.innerHTML = `<h1>PillCheck · Weekly care record</h1><p>${esc(p.name)} · Generated ${esc(new Date().toLocaleString())}${p.id.startsWith("demo") ? " · FICTIONAL SAMPLE PROFILE" : ""}</p><p>${stats.taken} of ${stats.expected} scheduled periods self-reported taken (${stats.percent}%). Today counts periods through ${currentSlot()}.</p><h2>Current medication plan</h2><table><thead><tr><th>Medication</th><th>Strength</th><th>Quantity</th><th>Periods</th></tr></thead><tbody>${p.meds.map((m) => `<tr><td>${esc(m.name)}</td><td>${esc(m.strength)}</td><td>${m.quantity}</td><td>${m.slots.join(", ")}</td></tr>`).join("")}</tbody></table><h2>Past seven days</h2><table><thead><tr><th>Date</th><th>Period</th><th>Reported status</th><th>Note</th></tr></thead><tbody>${logs.map((l) => `<tr><td>${esc(l.day)}</td><td>${esc(l.slot)}</td><td>${esc(l.status)}</td><td>${esc(l.note)}</td></tr>`).join("")}</tbody></table><h2>Refill notes</h2>${
     p.refills
       .filter((r) => r.at.slice(0, 10) >= dayKey(cutoff))
       .map((r) => `<p>${esc(r.name)}: ${esc(r.note)}</p>`)
       .join("") || "<p>No refill notes this week.</p>"
-  }<p>This is a self-reported record, not proof of ingestion or pill identity. PillCheck is a double-check aid and does not replace a pharmacist. No automated pill identification or clinical accuracy guarantee is active.</p>`;
+  }<p>This is a self-reported record, not proof of ingestion or pill identity. PillCheck is a double-check aid and does not replace a pharmacist. Automatic visual recognition is experimental and can be wrong. No clinical accuracy guarantee is active.</p>`;
   window.print();
 }
 function exportData() {
@@ -703,7 +851,12 @@ function bind() {
         if (page !== "check") resetCheck();
         selectedSlot = b.dataset.slot;
         observations = {};
-        result = null;
+        result = scan
+          ? evaluateScan(patient(), selectedSlot, scan, {
+              day: dayKey(),
+              currentSlot: currentSlot(),
+            })
+          : null;
         page = "check";
         render();
       }),
@@ -721,7 +874,7 @@ function bind() {
     (b) =>
       (b.onclick = () => {
         state.active = b.dataset.patient;
-        state.demo = patient().id === "demo";
+        state.demo = patient().id.startsWith("demo");
         save();
         resetCheck();
         render();
@@ -775,33 +928,23 @@ function bind() {
     speak,
     report,
     export: exportData,
-    evaluate: () => {
-      const invalid = dosesFor(patient(), selectedSlot).some(
-        (m) =>
-          !observations[m.id] ||
-          observations[m.id].count === null ||
-          !Number.isInteger(observations[m.id].count) ||
-          observations[m.id].count < 0 ||
-          observations[m.id].count > 20,
-      );
-      if (invalid && !isTaken(patient(), selectedSlot)) {
-        result = {
-          type: "uncertain",
-          title: "Complete the checklist",
-          detail:
-            "Enter a count for every medication. Choose “Not sure” when a pill cannot be checked.",
-        };
-      } else
-        result = checkDose(patient(), selectedSlot, observations, {
-          currentSlot: currentSlot(),
-        });
-      render();
+    "scan-photo": analyzePhoto,
+    "show-model-details": () => {
+      const details = document.querySelector("details");
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     },
+    "example-single": () => useExample(false),
+    "example-dose": () => useExample(true),
+    "go-meds": () => nav("meds"),
     "log-taken": () => {
-      const fresh = checkDose(patient(), selectedSlot, observations, {
+      const fresh = evaluateScan(patient(), selectedSlot, scan, {
+        day: dayKey(),
         currentSlot: currentSlot(),
       });
-      if (fresh.type !== "reviewed") {
+      if (fresh.type !== "matched") {
         result = fresh;
         render();
         return;
@@ -828,6 +971,18 @@ function bind() {
   document
     .querySelectorAll("[data-action]")
     .forEach((b) => (b.onclick = () => actions[b.dataset.action]?.()));
+  if ($("#scan-mode"))
+    $("#scan-mode").onchange = (e) => {
+      scanMode = e.target.value;
+      scanVersion++;
+      scanBusy = false;
+      scan = null;
+      result = null;
+      render();
+    };
+  document
+    .querySelectorAll("[data-connect-pill]")
+    .forEach((b) => (b.onclick = () => connectPill(b.dataset.connectPill)));
   if ($("#med-search"))
     $("#med-search").oninput = (e) => {
       const pos = e.target.selectionStart;
@@ -844,9 +999,14 @@ function bind() {
       if (f.size > 15 * 1024 * 1024)
         return toast("Please choose a photo under 15 MB.");
       if (photoUrl) URL.revokeObjectURL(photoUrl);
+      scanVersion++;
+      scan = null;
+      result = null;
+      scanBusy = false;
       photo = f;
       photoUrl = URL.createObjectURL(f);
       render();
+      analyzePhoto();
     };
   if ($("#org-photo"))
     $("#org-photo").onchange = (e) => {
@@ -899,7 +1059,7 @@ function bind() {
             state.active = state.patients.some((p) => p.id === state.active)
               ? state.active
               : state.patients[0].id;
-            state.demo = patient().id === "demo";
+            state.demo = patient().id.startsWith("demo");
             save();
             resetCheck();
             render();
@@ -929,3 +1089,46 @@ window.addEventListener("storage", (e) => {
   }
 });
 render();
+
+async function connectPill(id) {
+  const catalog = await getCatalog();
+  const entry = catalog.catalog.find((c) => c.id === id);
+  if (!entry) return;
+  const matches = patient().meds.filter(
+    (m) => productNdc(m.ndc) === productNdc(entry.ndc),
+  );
+  openDialog(
+    dialogHead("Connect this pill reference") +
+      `<div class="reference-tile" style="${referenceStyle(catalog.catalog.indexOf(entry))}"></div><p class="small section-gap"><strong>NDC ${esc(entry.ndc)}</strong><br>Only connect this reference if its NDC matches the bottle label. A model suggestion is not confirmation of identity.</p><label class="field-group section-gap">Medication in your plan<select id="connect-med">${patient()
+        .meds.map(
+          (m) =>
+            `<option value="${esc(m.id)}" ${matches.some((x) => x.id === m.id) ? "selected" : ""}>${esc(m.name)} ${esc(m.strength)}</option>`,
+        )
+        .join(
+          "",
+        )}</select></label><label class="checks section-gap"><input type="checkbox" id="connect-confirm"> I checked this NDC against the bottle</label><p class="error" id="connect-error"></p><div class="dialog-actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="connect-save">Connect reference</button></div>`,
+  );
+  $("#connect-save").onclick = () => {
+    if (!$("#connect-confirm").checked) {
+      $("#connect-error").textContent =
+        "Check the exact NDC on the bottle before connecting.";
+      return;
+    }
+    const med = patient().meds.find((m) => m.id === $("#connect-med").value);
+    if (!med) {
+      $("#connect-error").textContent = "Add a medication to your plan first.";
+      return;
+    }
+    med.ndc = entry.ndc;
+    med.pillId = entry.id;
+    save();
+    $("#modal").close();
+    if (scan)
+      result = evaluateScan(patient(), selectedSlot, scan, {
+        day: dayKey(),
+        currentSlot: currentSlot(),
+      });
+    render();
+    toast("Bottle reference connected.");
+  };
+}
