@@ -100,7 +100,6 @@ let page = state.patients.length && state.onboarded ? "today" : "welcome",
   selectedSlot = currentSlot(),
   photo = null,
   photoUrl = null,
-  result = null,
   observations = {},
   orgRows = 2,
   orgWeek = dayKey(weekStart()),
@@ -161,7 +160,6 @@ function resetCheck() {
   }
   selectedSlot = currentSlot();
   observations = {};
-  result = null;
   photo = null;
   if (photoUrl) URL.revokeObjectURL(photoUrl);
   photoUrl = null;
@@ -169,7 +167,6 @@ function resetCheck() {
 function nav(next) {
   if (page === "check" && next !== "check") stopCamera();
   page = next;
-  result = null;
   if (next === "today") viewDay = dayKey();
   render();
   window.scrollTo(0, 0);
@@ -185,12 +182,6 @@ const avatarBtn = () =>
 const topbar = (title, { sub = "", actions = "", back = "" } = {}) =>
   `${back ? `<button class="back" data-page="${back}">${icon("chevron-left")}${back === "settings" ? "Settings" : back === "meds" ? "Medications" : "Back"}</button>` : ""}<header class="topbar"><div>${sub ? `<div class="sub">${sub}</div>` : ""}<h1>${title}</h1></div><div class="top-actions">${actions}</div></header>`;
 const SLOT_ART = { Morning: "sunrise", Afternoon: "sun", Evening: "sunset", Bedtime: "night" };
-const SLOT_TIME = {
-  Morning: "Before noon",
-  Afternoon: "Noon – 5 PM",
-  Evening: "5 – 9 PM",
-  Bedtime: "After 9 PM",
-};
 function ring(frac, size = 38, stroke = 4, color = "var(--green)") {
   const r = (size - stroke) / 2,
     c = 2 * Math.PI * r,
@@ -260,8 +251,7 @@ ${NAV.filter(([id]) => id !== "check")
   .join("")}
 <button class="side-link ${page === "organizer" ? "active" : ""}" data-page="organizer">${icon("grid-3x3")}Pill organizer</button>
 <div class="side-foot"><button class="profile-chip" data-action="profiles"><span class="avatar sm">${initials(p.name)}</span><span class="grow"><b>${esc(p.name)}</b><small>${p.meds.length} medication${p.meds.length === 1 ? "" : "s"} · Switch</small></span></button></div></nav>
-<div class="main"><main id="main" class="page" tabindex="-1" style="${entering ? "" : "animation:none"}">${storageError ? `<div class="notice orange" style="margin-top:12px">${art("warning", 32)}<div><b>Changes aren’t being saved</b><p>Export a backup in Settings.</p></div></div>` : ""}${body}
-<p class="footer">PillCheck double-checks doses; it is not medical advice. Always follow your prescription and ask a pharmacist when unsure.</p></main></div></div>
+<div class="main"><main id="main" class="page" tabindex="-1" style="${entering ? "" : "animation:none"}">${storageError ? `<div class="notice orange" style="margin-top:12px">${art("warning", 32)}<div><b>Changes aren’t being saved</b><p>Export a backup in Settings.</p></div></div>` : ""}${body}</main></div></div>
 <nav class="tabbar" aria-label="Main navigation">${NAV.map(([id, ic, label]) => `<button class="${current === id ? "active" : ""} ${id === "check" ? "scan-tab" : ""}" data-page="${id}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span></button>`).join("")}</nav>`;
   bind();
   if (cameraStream && page === "check") connectCameraPreview();
@@ -270,12 +260,12 @@ function welcome() {
   return `<main class="welcome" id="main"><div class="welcome-inner">
 <div class="welcome-hero"><img src="/icon.svg" alt=""><h1>${state.onboarded ? "How PillCheck works" : "Welcome to PillCheck"}</h1><p>A second pair of eyes for every dose.</p></div>
 <div class="card" style="display:grid;gap:22px;padding:22px">
-<div class="feature">${art("camera", 46)}<div><b>Check a dose with the live camera</b><p>See object outlines update in the camera preview, then capture a frame for a suggestion from our detection model.</p></div></div>
-<div class="feature">${art("question", 46)}<div><b>Says “not sure” instead of guessing</b><p>Look-alike or unclear pills are flagged, so you know to check the bottle or ask a pharmacist.</p></div></div>
-<div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help, with large text and read-aloud.</p></div></div>
+<div class="feature">${art("camera", 46)}<div><b>Scan a dose</b><p>Our detection model reads each pill’s color, shape and imprint.</p></div></div>
+<div class="feature">${art("calendar", 46)}<div><b>Stay on schedule</b><p>See what’s due today and keep a streak going.</p></div></div>
+<div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help.</p></div></div>
 </div>
 <div class="welcome-actions">${state.onboarded ? button("Back to the app", "back-to-app", "primary block") : button("Get started", "new-profile", "primary block")}</div>
-<p class="fine">Research prototype for the Congressional App Challenge. Not a medical device.</p>
+<p class="fine">Research prototype</p>
 </div></main>`;
 }
 function today() {
@@ -301,13 +291,13 @@ function today() {
     })
     .join("")}</div>`;
   const summary = !p.meds.length
-    ? `<div class="card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:28px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">Add your first medication</h2><p class="muted">Copy the name, strength and times from the prescription label. It takes about a minute.</p>${button("Add medication", "add-med", "primary block", "plus")}</div>`
-    : `<div class="card summary"><span class="ring-wrap">${ring(slots.length ? taken / slots.length : 0, 92, 10)}<span class="ring-label">${taken}/${slots.length}</span></span><div class="grow"><h2>${!slots.length ? "Nothing scheduled" : taken === slots.length ? "All doses taken" : isToday ? `Next: ${next.toLowerCase()} dose` : `${slots.length - taken} not logged`}</h2><p>${taken === slots.length && slots.length ? (isToday ? "Great job today." : "Every dose was logged.") : isToday ? "Take one photo before you take your pills." : "These doses were not logged that day."}</p>${streak ? `<span class="streak">${art("fire", 22)}${streak}-day streak</span>` : isToday && next ? `<button class="btn primary sm" data-slot="${next}">${icon("scan-line")}Scan now</button>` : ""}</div></div>`;
+    ? `<div class="card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:28px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">Add your first medication</h2>${button("Add medication", "add-med", "primary block", "plus")}</div>`
+    : `<div class="card summary"><span class="ring-wrap">${ring(slots.length ? taken / slots.length : 0, 92, 10)}<span class="ring-label">${taken}/${slots.length}</span></span><div class="grow"><h2>${!slots.length ? "Nothing scheduled" : taken === slots.length ? "All doses taken" : isToday ? `Next: ${next.toLowerCase()} dose` : `${slots.length - taken} not logged`}</h2><p>${taken === slots.length && slots.length ? (isToday ? "Great job today." : "Every dose was logged.") : isToday ? "Scan before you take them." : "Not logged that day."}</p>${streak ? `<span class="streak">${art("fire", 22)}${streak}-day streak</span>` : ""}</div></div>`;
   const groups = slots
     .map((s) => {
       const done = isTaken(p, s, viewDay),
         log = p.logs.find((l) => l.day === viewDay && l.slot === s && l.status === "taken");
-      return `<section class="section"><div class="dose-group-head"><h3>${art(SLOT_ART[s], 30)}${s} <span class="faint small" style="font-weight:600">${SLOT_TIME[s]}</span></h3>${!done && isToday && s !== next ? `<button class="link" data-slot="${s}">${icon("scan-line")}Scan</button>` : ""}</div><div class="list">${done ? `<div class="taken-banner">${icon("check")}Taken${log ? " at " + esc(new Date(log.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })) : ""}</div>` : ""}${dosesFor(p, s, viewDay)
+      return `<section class="section"><div class="dose-group-head"><h3>${art(SLOT_ART[s], 30)}${s}</h3>${!done && isToday && s !== next ? `<button class="link" data-slot="${s}">${icon("scan-line")}Scan</button>` : ""}</div><div class="list">${done ? `<div class="taken-banner">${icon("check")}Taken${log ? " at " + esc(new Date(log.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })) : ""}</div>` : ""}${dosesFor(p, s, viewDay)
         .map(
           (m) =>
             `<${!done && isToday ? `button data-slot="${s}"` : "div"} class="row">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)}</span><br><span class="row-sub">${esc(m.strength)} · ${m.quantity} ${m.shape === "Capsule" ? "capsule" : "tablet"}${m.quantity > 1 ? "s" : ""}</span></span><span class="check-circle ${done ? "done" : ""}">${icon("check")}</span></${!done && isToday ? "button" : "div"}>`,
@@ -317,16 +307,15 @@ function today() {
     .join("");
   return (
     topbar(isToday ? "Today" : viewDate.toLocaleDateString("en-US", { weekday: "long" }), {
-      sub: viewDate.toLocaleDateString("en-US", { weekday: isToday ? "long" : undefined, month: "long", day: "numeric" }),
       actions: `<button class="round-btn" data-action="add-med" aria-label="Add medication" title="Add medication">${icon("plus")}</button>${avatarBtn()}`,
     }) +
     weekStrip +
     `<div class="section" style="margin-top:14px">${summary}</div>` +
     groups +
     (pairs.length
-      ? `<div class="section notice orange">${art("warning", 32)}<div><b>Some pills look alike</b><p>${pairs.map(([a, b]) => `${esc(a.name)} and ${esc(b.name)}`).join("; ")} have the same color and shape. Check labels and imprints carefully.</p></div></div>`
+      ? `<div class="section notice orange">${art("warning", 32)}<div><b>Some pills look alike</b><p>${pairs.map(([a, b]) => `${esc(a.name)} and ${esc(b.name)}`).join("; ")} look alike. Check the imprints.</p></div></div>`
       : "") +
-    `<div class="section grid-2"><button class="card row" data-page="organizer" style="min-height:0">${art("calendar", 40)}<span class="grow"><span class="row-title">Pill organizer</span><br><span class="row-sub">Check the week’s box</span></span>${icon("chevron-right")}</button><button class="card row" data-action="report" style="min-height:0">${art("chart", 40)}<span class="grow"><span class="row-title">Doctor report</span><br><span class="row-sub">Print this week</span></span>${icon("chevron-right")}</button></div>`
+    `<div class="section grid-2"><button class="card row" data-page="organizer" style="min-height:0">${art("calendar", 40)}<span class="grow"><span class="row-title">Pill organizer</span><br><span class="row-sub">Weekly box</span></span>${icon("chevron-right")}</button><button class="card row" data-action="report" style="min-height:0">${art("chart", 40)}<span class="grow"><span class="row-title">Doctor report</span><br><span class="row-sub">Print the week</span></span>${icon("chevron-right")}</button></div>`
   );
 }
 function medications() {
@@ -337,91 +326,116 @@ function medications() {
     pairs = blindSpots(p.meds);
   return (
     topbar("Medications", {
-      sub: esc(p.name),
       actions: `<button class="round-btn" data-action="add-med" aria-label="Add medication" title="Add medication">${icon("plus")}</button>${avatarBtn()}`,
     }) +
     (p.meds.length > 3
       ? `<label class="search">${icon("search")}<span class="sr-only">Find a medication</span><input id="med-search" placeholder="Search" value="${esc(search)}"></label>`
       : "") +
     (pairs.length
-      ? `<div class="section notice orange">${art("warning", 32)}<div><b>Look-alike pills</b><p>${pairs.map(([a, b]) => `${esc(a.name)} and ${esc(b.name)}`).join("; ")} share a color and shape.</p></div></div>`
+      ? `<div class="section notice orange">${art("warning", 32)}<div><b>Look-alike pills</b><p>${pairs.map(([a, b]) => `${esc(a.name)} and ${esc(b.name)}`).join("; ")} look alike.</p></div></div>`
       : "") +
     (p.meds.length
       ? `<div class="section"><div class="list">${matches
           .map(
             (m) =>
-              `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)} <span class="muted" style="font-weight:500">${esc(m.strength)}</span></span><br><span class="row-sub">${m.quantity} × ${m.slots.join(", ")}</span><br>${m.ndc ? `<span class="tag green">${icon("check")}NDC saved</span>` : `<span class="tag orange">Add bottle NDC</span>`}</span><span class="chev">${icon("chevron-right")}</span></button>`,
+              `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)} <span class="muted" style="font-weight:500">${esc(m.strength)}</span></span><br><span class="row-sub">${m.quantity} × ${m.slots.join(", ")}</span></span><span class="chev">${icon("chevron-right")}</span></button>`,
           )
-          .join("") || '<div class="row plain"><span class="muted">No matches</span></div>'}</div><p class="caption">Tap a medication to edit it or report a refill that looks different. The NDC records the exact product from the bottle; AI photo suggestions do not verify it.</p></div>`
-      : `<div class="section card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:30px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">No medications yet</h2><p class="muted">Copy the exact name, strength and schedule from each prescription label.</p>${button("Add medication", "add-med", "primary block", "plus")}</div>`) +
-    `<div class="section"><div class="section-head"><h2>Tools</h2></div><div class="list"><button class="row" data-page="organizer"><span class="ico-tile t-purple">${icon("grid-3x3")}</span><span class="grow row-title">Pill organizer</span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow row-title">How recognition works</span><span class="chev">${icon("chevron-right")}</span></button></div></div>`
+          .join("") || '<div class="row plain"><span class="muted">No matches</span></div>'}</div></div>`
+      : `<div class="section card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:30px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">No medications yet</h2>${button("Add medication", "add-med", "primary block", "plus")}</div>`) +
+    `<div class="section"><div class="section-head"><h2>Tools</h2></div><div class="list"><button class="row" data-page="organizer"><span class="ico-tile t-purple">${icon("grid-3x3")}</span><span class="grow row-title">Pill organizer</span><span class="chev">${icon("chevron-right")}</span></button></div></div>`
   );
 }
-const RESULT_KIND = {
-  matched: ["good", "check"],
-  wrong: ["bad", "cross"],
-  missing: ["bad", "cross"],
-  uncertain: ["warn", "question"],
-  setup: ["warn", "warning"],
-  time: ["warn", "alarm"],
-  duplicate: ["warn", "warning"],
-};
-function resultHtml() {
-  if (scan?.model === "PillCheck detection model")
-    return `<div class="result warn" role="status" id="check-result">${art("warning", 84)}<h2>Visual suggestion · verify the label</h2><p>Our detection model cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.</p><label class="checks section-gap"><input id="manual-dose-confirm" type="checkbox"> I checked each pill against the pharmacy label and today’s plan</label><div class="actions"><button class="btn success block" data-action="log-taken" id="manual-log" disabled>I took this verified dose</button>${button("Save a concern", "log-concern", "block", "triangle-alert")}${button("Retake photo", "retake", "block", "camera")}</div></div>`;
-  const [kind, pic] = RESULT_KIND[result.type] || ["warn", "warning"];
-  const primary =
-    result.type === "matched"
-      ? button("I took it · log dose", "log-taken", "success block", "check")
-      : result.type === "duplicate"
-        ? button("See history", "go-family", "primary block")
-        : result.type === "setup"
-          ? button("Add bottle NDCs", "go-meds", "primary block", "pill")
-          : button("Save a concern", "log-concern", "primary block", "triangle-alert");
-  return `<div class="result ${kind}" role="status" id="check-result">${art(pic, 84)}<h2>${esc(result.title)}</h2><p>${esc(result.detail)}</p><div class="actions">${primary}${button("Retake photo", "retake", "block", "camera")}</div></div>`;
-}
-function scanSteps() {
-  const stage = /Waiting/.test(scanProgress) ? 2 : /Sending/.test(scanProgress) ? 1 : 0;
-  return `<div class="card steps" role="status" aria-live="polite">${[
-    "Preparing a resized photo",
-    "Sending the photo to our detection service",
-    "Analyzing with PillCheck’s detection model",
-  ]
-    .map(
-      (s, i) =>
-        `<div class="step ${i < stage ? "done" : i === stage ? "now" : ""}"><span class="dot">${i < stage ? icon("check") : ""}</span>${s}</div>`,
-    )
-    .join("")}<p class="caption" style="margin:4px 16px 12px">${esc(scanProgress || "Preparing the photo…")}</p></div>`;
-}
-function visualSuggestionResult() {
+// Map the detection model's free-text color and shape onto the app's pill icons.
+const pillLook = (f) => {
+  const c = (f.color || "").toLowerCase(),
+    s = (f.shape || "").toLowerCase();
   return {
-    type: "uncertain",
-    title: "Visual suggestion · verify the label",
-    detail:
-      "Our detection model cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.",
+    color: Object.keys(colors).find((k) => c.includes(k.toLowerCase())) || "White",
+    shape: /capsule/.test(s) ? "Capsule" : /oval|oblong|ellip/.test(s) ? "Oval" : "Round",
   };
+};
+const imprintKey = (s) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+// Imprints are read from photos, so allow one misread character ("PAIN5" vs "PAN5").
+function closeImprint(a, b) {
+  a = imprintKey(a);
+  b = imprintKey(b);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (Math.min(a.length, b.length) < 3 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0,
+    j = 0,
+    edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) i++, j++;
+    else {
+      if (++edits > 1) return false;
+      if (a.length > b.length) i++;
+      else if (b.length > a.length) j++;
+      else i++, j++;
+    }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+const planMatch = (f, meds) => meds.find((m) => closeImprint(f.imprint, m.imprint));
+// A planned medication counts as seen when a found pill carries its saved imprint.
+const seenImprint = (m) => !!scan?.pills.some((f) => closeImprint(f.imprint, m.imprint));
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+function resultHtml(meds) {
+  const found = scan.pills,
+    expected = meds.reduce((n, m) => n + m.quantity, 0),
+    countOk = found.length > 0 && found.length === expected,
+    head = found.length
+      ? `${found.length} pill${found.length === 1 ? "" : "s"} found`
+      : "No pills found",
+    sub = !found.length
+      ? "Try again on a plain surface with better light."
+      : expected
+        ? countOk
+          ? `Matches the ${expected} planned for ${selectedSlot.toLowerCase()}`
+          : `${expected} planned for ${selectedSlot.toLowerCase()}`
+        : `Nothing is planned for ${selectedSlot.toLowerCase()}`;
+  const rows = found
+    .map((f) => {
+      const look = pillLook(f),
+        label = cap([f.color, f.shape].filter(Boolean).join(" ").toLowerCase()) || "Pill",
+        mine = planMatch(f, meds),
+        sub = mine
+          ? `<span class="row-sub match">${icon("check")}Matches ${esc(mine.name)} ${esc(mine.strength)}</span>`
+          : f.possible
+            ? `<span class="row-sub">Possibly ${esc(f.possible)}</span>`
+            : "";
+      return `<div class="row">${pill(look)}<span class="grow"><span class="row-title">${esc(label)}</span>${sub ? "<br>" + sub : ""}</span>${f.imprint ? `<span class="imprint">${esc(f.imprint)}</span>` : ""}</div>`;
+    })
+    .join("");
+  return `<div class="card found" role="status" id="check-result"><div class="found-head"><span class="found-ico ${countOk ? "good" : "warn"}">${icon(countOk ? "check" : found.length ? "triangle-alert" : "x")}</span><div><h2>${head}</h2><p>${esc(sub)}</p></div></div>${rows ? `<div class="list flat">${rows}</div>` : ""}${scan.note ? `<p class="found-note">${esc(scan.note)}</p>` : ""}</div>
+<div class="actions-row">${button("Log as taken", "log-taken", "success block", "check")}<div class="btn-pair">${button("Retake", "retake", "block", "camera")}${button("Flag a problem", "log-concern", "block", "triangle-alert")}</div></div>
+<p class="research-note">Research prototype · compare with your pharmacy label.</p>`;
 }
 function checkPage() {
   const p = patient(),
     meds = dosesFor(p, selectedSlot),
-    planned = `<div class="section"><div class="section-head"><h2>${art(SLOT_ART[selectedSlot], 26)}Planned for ${selectedSlot.toLowerCase()}</h2></div><div class="list">${meds.map((m) => `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)} <span class="muted" style="font-weight:500">× ${m.quantity}</span></span><br><span class="row-sub">${esc(m.strength)}${m.ndc ? " · NDC " + esc(m.ndc) : ""}</span></span>${m.ndc ? "" : '<span class="tag orange">Add NDC</span>'}<span class="chev">${icon("chevron-right")}</span></button>`).join("") || `<div class="row plain"><span class="muted">Nothing is scheduled for ${selectedSlot.toLowerCase()}.</span></div>`}</div></div>`;
+    planned = `<div class="section"><div class="section-head"><h2>Planned for ${selectedSlot.toLowerCase()}</h2></div><div class="list">${meds.map((m) => `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)}</span><br><span class="row-sub">${esc(m.strength)} · ${m.quantity} ${m.shape === "Capsule" ? "capsule" : "tablet"}${m.quantity > 1 ? "s" : ""}${m.imprint ? ` · ${esc(m.imprint)}` : ""}</span></span>${scan && seenImprint(m) ? `<span class="tag green">${icon("check")}Seen</span>` : ""}</button>`).join("") || `<div class="row plain"><span class="muted">Nothing planned.</span></div>`}</div></div>`;
   const slotPicker = `<div class="segmented" role="group" aria-label="Which dose">${SLOTS.map((s) => `<button data-slot="${s}" aria-pressed="${s === selectedSlot}">${s}${isTaken(p, s) ? " ✓" : ""}</button>`).join("")}</div>`;
+  const modeToggle = `<div class="segmented mode" role="group" aria-label="Photo type">${[
+    ["dose", "Several pills"],
+    ["single", "One pill"],
+  ]
+    .map(([id, label]) => `<button data-mode="${id}" aria-pressed="${scanMode === id}">${label}</button>`)
+    .join("")}</div>`;
   let body;
-  if (scan && result && !scanBusy)
-    body = `<div class="viewfinder" style="aspect-ratio:auto;min-height:200px;margin-top:14px"><img src="${esc(photoUrl)}" alt="Photo submitted for visual analysis" style="position:static;max-height:300px"></div><div class="section">${resultHtml()}</div><div class="section card"><h2>Our detection model’s visual suggestion</h2><p class="ai-output">${esc(scan.analysis)}</p><p class="caption">This is an unverified AI suggestion, not a pill identification or medication recommendation.</p></div>${planned}`;
+  if (scan && !scanBusy)
+    body = `<div class="viewfinder shot"><img src="${esc(photoUrl)}" alt="Scanned photo"></div><div class="section">${resultHtml(meds)}</div>${planned}`;
   else if (cameraStream)
-    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only. Capturing sends this photo to our detection model to analyze. Avoid labels, faces, or documents; the model cannot confirm pill identity.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
+    body = `<div class="viewfinder camera-live"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture and scan">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div>${modeToggle}${planned}`;
   else if (scanBusy || photoUrl)
-    body = `<div class="viewfinder ${scanBusy ? "busy" : ""}" style="margin-top:14px">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being checked">` : ""}<span class="corners"></span></div><div class="section">${scanBusy ? scanSteps() : `<div class="notice">${art("warning", 32)}<div><b>${esc(scanProgress || "Ready")}</b></div></div>`}</div>`;
+    body = `<div class="viewfinder ${scanBusy ? "busy" : ""}">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being scanned">` : ""}<span class="corners"></span>${scanBusy ? `<span class="camera-status" role="status" aria-live="polite">Analyzing…</span>` : ""}</div>${scanBusy ? "" : `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(scanProgress || "Something went wrong")}</b></div></div><div class="actions-row">${button("Try again", "scan-photo", "primary block", "refresh-cw")}${button("Retake", "retake", "block", "camera")}</div>`}`;
   else
-    body = `<div class="viewfinder" id="dropzone" style="margin-top:14px"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread the pills on a plain surface"}</b><span>Keep them apart with imprints up, in good light. Start the live camera or upload a photo.</span></span></div>
+    body = `<div class="viewfinder" id="dropzone"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread pills on a plain surface"}</b><span>Imprints up, good light</span></span></div>
 ${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
-<div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="start-camera" aria-label="Start live camera">${icon("camera")}</button><button class="side-action" data-mode="${scanMode === "dose" ? "single" : "dose"}" aria-label="Switch to ${scanMode === "dose" ? "one-pill close-up" : "several pills"}"><span class="ico">${icon(scanMode === "dose" ? "pill" : "grid-3x3")}</span>${scanMode === "dose" ? "Several pills" : "One pill"}</button></div>
-<p class="caption">Analyzing a photo sends it to our detection model to process. Avoid including labels, faces, or personal documents.</p>
+<div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="start-camera" aria-label="Start camera">${icon("camera")}</button><span class="side-action" aria-hidden="true"></span></div>${modeToggle}
 ${planned}`;
   return (
-    topbar("Scan a dose", {
-      sub: esc(p.name),
+    topbar("Scan", {
       actions: `<button class="round-btn" data-action="speak" aria-label="Read instructions aloud" title="Read aloud">${icon("volume-2")}</button>${avatarBtn()}`,
     }) +
     slotPicker +
@@ -446,7 +460,6 @@ async function startCamera() {
   scanVersion++;
   scanBusy = false;
   scan = null;
-  result = null;
   scanProgress = "";
   photo = null;
   if (photoUrl) URL.revokeObjectURL(photoUrl);
@@ -614,14 +627,11 @@ async function analyzePhoto() {
   const started = performance.now();
   scanBusy = true;
   scan = null;
-  result = null;
-  scanProgress = "Preparing photo…";
+  scanProgress = "";
   render();
   try {
     const upload = await preparePhoto(photo);
     if (version !== scanVersion) return;
-    scanProgress = "Sending photo to our detection service…";
-    if (page === "check") render();
     const response = await fetch("/api/recognize", {
       method: "POST",
       headers: {
@@ -629,24 +639,22 @@ async function analyzePhoto() {
         "X-PillCheck-Mode": scanMode,
       },
       body: upload,
-      signal: AbortSignal.timeout(100_000),
+      signal: AbortSignal.timeout(40_000),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok)
-      throw Error(payload.error || "Our detection service is unavailable. Try again.");
+      throw Error(payload.error || "Our detection model is unavailable. Try again.");
     if (version !== scanVersion) return;
     scan = {
       model: payload.model || "PillCheck detection model",
-      analysis: payload.analysis,
+      pills: Array.isArray(payload.pills) ? payload.pills : [],
+      note: payload.note || "",
       elapsedMs: performance.now() - started,
-      pills: [],
     };
-    result = visualSuggestionResult();
-    scanProgress = "";
   } catch (e) {
     if (version !== scanVersion) return;
-    scanProgress = e.message;
-    toast(e.message);
+    scanProgress =
+      e.name === "TimeoutError" ? "Our detection model took too long. Try again." : e.message;
   } finally {
     if (version === scanVersion) {
       scanBusy = false;
@@ -676,7 +684,6 @@ function organizer() {
   return (
     topbar("Pill organizer", {
       back: "meds",
-      sub: "Filling a weekly box?",
       actions: `<button class="round-btn" data-action="speak" aria-label="Read instructions aloud">${icon("volume-2")}</button>`,
     }) +
     `<div class="card grid-2"><label class="field-group">Week starting<input id="org-week" type="date" value="${orgWeek}"></label><label class="field-group">Box layout<select id="org-layout"><option value="1" ${orgRows === 1 ? "selected" : ""}>7 × 1 · Morning</option><option value="2" ${orgRows === 2 ? "selected" : ""}>7 × 2 · Morning / Evening</option><option value="4" ${orgRows === 4 ? "selected" : ""}>7 × 4 · All times</option></select></label></div>
@@ -693,8 +700,7 @@ function organizer() {
             .join("")}`,
       )
       .join("")}</div></div>
-<p class="caption">Tap a compartment, compare each pill with the plan, then mark it checked or flag a concern. These marks never log a dose as taken.</p>
-<div class="section list"><label class="row" for="org-photo"><span class="ico-tile t-teal">${icon("camera")}</span><span class="grow"><span class="row-title">Add a reference photo</span><br><span class="row-sub">Stays in this tab only</span></span><span class="chev">${icon("chevron-right")}</span></label></div><input type="file" id="org-photo" accept="image/*" capture="environment">${viewOrgPhoto ? `<img src="${esc(viewOrgPhoto)}" alt="Organizer reference photo" style="width:100%;max-height:320px;object-fit:contain;border-radius:18px;margin-top:12px;background:#000">` : ""}`
+<div class="section list"><label class="row" for="org-photo"><span class="ico-tile t-teal">${icon("camera")}</span><span class="grow row-title">Add a reference photo</span><span class="chev">${icon("chevron-right")}</span></label></div><input type="file" id="org-photo" accept="image/*" capture="environment">${viewOrgPhoto ? `<img src="${esc(viewOrgPhoto)}" alt="Organizer reference photo" style="width:100%;max-height:320px;object-fit:contain;border-radius:18px;margin-top:12px;background:#000">` : ""}`
   );
 }
 function family() {
@@ -703,9 +709,9 @@ function family() {
     logs = [...p.logs].sort((a, b) => b.at.localeCompare(a.at)),
     streak = streakDays(p);
   return (
-    topbar("History", { sub: esc(p.name), actions: avatarBtn() }) +
+    topbar("History", { actions: avatarBtn() }) +
     `<div class="stats"><div class="card stat"><b>${stats.expected ? stats.percent + "%" : "—"}</b><span>This week</span></div><div class="card stat"><b>${streak}</b><span>Day streak</span></div><div class="card stat"><b>${p.logs.filter((l) => l.status === "taken").length}</b><span>Doses logged</span></div></div>
-<div class="section"><div class="section-head"><h2>Last 7 days</h2></div><div class="card"><div class="bars" role="img" aria-label="${stats.taken} of ${stats.expected} scheduled doses logged in the past seven days">${stats.daily.map((d) => `<div class="bar"><div class="track"><div class="fill" style="height:${d.expected ? (d.taken / d.expected) * 100 : 0}%"></div></div><span>${d.label}</span></div>`).join("")}</div></div><p class="caption">${stats.taken} of ${stats.expected} scheduled doses logged. Logs are self-reported, not proof a pill was swallowed.</p></div>
+<div class="section"><div class="section-head"><h2>Last 7 days</h2></div><div class="card"><div class="bars" role="img" aria-label="${stats.taken} of ${stats.expected} scheduled doses logged in the past seven days">${stats.daily.map((d) => `<div class="bar"><div class="track"><div class="fill" style="height:${d.expected ? (d.taken / d.expected) * 100 : 0}%"></div></div><span>${d.label}</span></div>`).join("")}</div></div></div>
 <div class="section">${button("Print a report for the doctor", "report", "primary block", "printer")}</div>
 <div class="section"><div class="section-head"><h2>Dose log</h2><span class="faint small">${logs.length} records</span></div><div class="list">${
       logs
@@ -715,7 +721,7 @@ function family() {
             `<div class="row"><span class="ico-tile ${l.status === "taken" ? "t-green" : "t-orange"}">${icon(l.status === "taken" ? "check" : "triangle-alert")}</span><span class="grow"><span class="row-title">${esc(l.slot)} · ${esc(l.status === "taken" ? "Taken" : l.status === "concern" ? "Concern" : "Skipped")}</span><br><span class="row-sub">${esc(new Date(l.at).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</span></span><button class="link" data-delete-log="${esc(l.id)}">Undo</button></div>`,
         )
         .join("") ||
-      `<div class="row plain"><span class="muted">No doses logged yet. Your first scan will appear here.</span></div>`
+      `<div class="row plain"><span class="muted">No doses logged yet.</span></div>`
     }</div></div>${
       p.refills.length
         ? `<div class="section"><div class="section-head"><h2>Refill notes</h2></div><div class="list">${[...p.refills]
@@ -734,7 +740,7 @@ function settings() {
   return (
     topbar("Settings") +
     `<div class="list"><button class="row" data-action="profiles"><span class="avatar">${initials(p.name)}</span><span class="grow"><span class="row-title">${esc(p.name)}</span><br><span class="row-sub">${state.patients.length} ${state.patients.length === 1 ? "person" : "people"} on this device · Switch</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-action="new-profile"><span class="ico-tile t-green">${icon("user-plus")}</span><span class="grow row-title">Add a person</span><span class="chev">${icon("chevron-right")}</span></button></div>
-<div class="section"><div class="section-head"><h2>Display</h2></div><div class="list"><label class="row"><span class="ico-tile t-blue">${icon("a-large-small")}</span><span class="grow row-title">Larger text</span><input id="large-text" class="switch" type="checkbox" ${state.large ? "checked" : ""}></label><div class="row"><span class="ico-tile t-purple">${icon("sun-moon")}</span><span class="grow row-title" style="white-space:nowrap">Appearance</span><div class="segmented" role="group" aria-label="Appearance" style="flex:0 1 190px">${[
+<div class="section"><div class="section-head"><h2>Display</h2></div><div class="list"><label class="row"><span class="ico-tile t-blue">${icon("a-large-small")}</span><span class="grow row-title">Larger text</span><input id="large-text" class="switch" type="checkbox" ${state.large ? "checked" : ""}></label><div class="row"><span class="ico-tile t-purple">${icon("sun-moon")}</span><span class="grow row-title" style="white-space:nowrap">Theme</span><div class="segmented" role="group" aria-label="Appearance" style="flex:0 1 190px">${[
       ["system", "Auto"],
       ["light", "Light"],
       ["dark", "Dark"],
@@ -748,14 +754,16 @@ function settings() {
     ]
       .map(([id, label]) => `<option value="${id}" ${state.language === id ? "selected" : ""}>${label}</option>`)
       .join("")}</select></label><button class="row" data-action="speak"><span class="ico-tile t-teal">${icon("volume-2")}</span><span class="grow row-title">Play a voice preview</span><span class="chev">${icon("chevron-right")}</span></button></div></div>
-<div class="section"><div class="section-head"><h2>Your data</h2></div><div class="list"><button class="row" data-action="export"><span class="ico-tile t-blue">${icon("download")}</span><span class="grow"><span class="row-title">Export a backup</span><br><span class="row-sub">Contains health information; keep it private</span></span><span class="chev">${icon("chevron-right")}</span></button><label class="row" for="import-file"><span class="ico-tile t-green">${icon("upload")}</span><span class="grow"><span class="row-title">Restore from a backup</span><br><span class="row-sub">You confirm before anything is replaced</span></span><span class="chev">${icon("chevron-right")}</span></label><button class="row" data-action="reset"><span class="ico-tile t-red">${icon("trash-2")}</span><span class="grow row-title" style="color:var(--red)">Erase all data on this device</span></button></div><input id="import-file" type="file" accept="application/json,.json"></div>
-<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow"><span class="row-title">How PillCheck works</span><br><span class="row-sub">Accuracy, limits and data sources</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Care profiles and logs stay in this browser, unencrypted. When you analyze a photo, PillCheck sends a compressed copy to our detection model. PillCheck does not store the photo. Avoid including labels, faces, or documents.</p><p class="caption">A medicine name or NDC is sent to the U.S. National Library of Medicine only when you use lookup. PillCheck does not run analytics or tracking.</p><p class="caption">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
+<div class="section"><div class="section-head"><h2>Your data</h2></div><div class="list"><button class="row" data-action="export"><span class="ico-tile t-blue">${icon("download")}</span><span class="grow row-title">Export a backup</span><span class="chev">${icon("chevron-right")}</span></button><label class="row" for="import-file"><span class="ico-tile t-green">${icon("upload")}</span><span class="grow row-title">Restore from a backup</span><span class="chev">${icon("chevron-right")}</span></label><button class="row" data-action="reset"><span class="ico-tile t-red">${icon("trash-2")}</span><span class="grow row-title" style="color:var(--red)">Erase all data on this device</span></button></div><input id="import-file" type="file" accept="application/json,.json"></div>
+<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow row-title">How PillCheck works</span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Your data stays in this browser. Photos are analyzed by our detection model and not stored.</p></div>`
   );
 }
 function about() {
   return (
     topbar("How it works", { back: "settings" }) +
-    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Find separate objects</b><p>The live camera uses simple background segmentation to draw outlines. It can mistake other objects for pills or miss touching pills.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Ask our detection model for a visual description</b><p>After you capture or select a photo, our detection model analyzes a compressed copy. It may describe shape and color, read a visible imprint, or suggest possibilities.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check the pharmacy label</b><p>Our detection model does not verify pill identity against your plan. Treat every suggestion as uncertain and confirm each pill using its original label or a pharmacist.</p></div></div></div><div class="section notice orange">${art("warning", 32)}<div><b>Know the limits</b><p>Our detection model is not clinically validated for medication identification and can be wrong. Color and shape alone are not enough to identify a pill. Never take an unfamiliar pill because of an AI suggestion.</p></div></div><p class="caption">The previous on-device pill identity model remains in the project but is inactive. Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT).</p>`
+    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Snap the dose</b><p>Spread the pills out on a plain surface and take one photo.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Our detection model reads it</b><p>It finds each pill and reads its color, shape and imprint.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Compare with your plan</b><p>PillCheck counts the pills and flags imprints that match your saved medications.</p></div></div></div>
+<p class="caption">Research prototype · not a medical device.</p>
+<p class="caption">Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT). This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p>`
   );
 }
 function profilesSheet() {
@@ -799,13 +807,13 @@ function medicationForm(id) {
   lookup = [];
   openDialog(
     dialogHead(old ? "Medication details" : "Add a medication") +
-      `<div class="note" style="margin-bottom:20px">Copy your existing prescription instructions. PillCheck does not choose medications or doses.</div>${!old ? `<label class="field-group">Optional: find a name or NDC in RxNorm<div class="toolbar" style="margin:0"><input id="lookup-query" placeholder="e.g. metformin or bottle NDC"><button type="button" class="btn" id="lookup-btn">Look up</button></div></label><div id="lookup-status" class="small muted" role="status"></div><div id="lookup-results" class="lookup-results"></div><hr style="border:0;border-top:1px solid var(--line);margin:20px 0">` : ""}<form id="med-form"><div class="form-grid"><label class="field-group full">Medication name<input name="name" value="${esc(m.name)}" maxlength="160" required></label><label class="field-group">Strength on label<input name="strength" value="${esc(m.strength)}" placeholder="e.g. 10 mg" maxlength="100" required></label><label class="field-group">Pills per scheduled dose<input name="quantity" value="${m.quantity}" type="number" min="1" max="20" step="1" required></label><label class="field-group">Color<select name="color">${Object.keys(
+      `${!old ? `<label class="field-group">Look up a medicine<div class="toolbar" style="margin:0"><input id="lookup-query" placeholder="e.g. metformin or bottle NDC"><button type="button" class="btn" id="lookup-btn">Look up</button></div></label><div id="lookup-status" class="small muted" role="status"></div><div id="lookup-results" class="lookup-results"></div><hr style="border:0;border-top:1px solid var(--line);margin:20px 0">` : ""}<form id="med-form"><div class="form-grid"><label class="field-group full">Medication name<input name="name" value="${esc(m.name)}" maxlength="160" required></label><label class="field-group">Strength<input name="strength" value="${esc(m.strength)}" placeholder="e.g. 10 mg" maxlength="100" required></label><label class="field-group">Pills per dose<input name="quantity" value="${m.quantity}" type="number" min="1" max="20" step="1" required></label><label class="field-group">Color<select name="color">${Object.keys(
         colors,
       )
         .map((c) => `<option ${m.color === c ? "selected" : ""}>${c}</option>`)
         .join(
           "",
-        )}</select></label><label class="field-group">Shape<select name="shape">${["Round", "Oval", "Capsule"].map((c) => `<option ${m.shape === c ? "selected" : ""}>${c}</option>`).join("")}</select></label><label class="field-group">Imprint (if visible)<input name="imprint" value="${esc(m.imprint)}" maxlength="60" placeholder="Letters / numbers"></label><label class="field-group">Manufacturer (optional)<input name="manufacturer" value="${esc(m.manufacturer)}" maxlength="100"></label><label class="field-group full">Exact NDC from bottle (for automatic matching)<input name="ndc" value="${esc(m.ndc || "")}" maxlength="20" placeholder="e.g. 00093-0148-01"><span class="small muted">Use the exact bottle NDC. Name and strength alone do not select a pill appearance.</span></label><div class="field-group full"><span>Scheduled periods from your care plan</span><div class="checks">${SLOTS.map((s) => `<label><input name="slots" value="${s}" type="checkbox" ${m.slots.includes(s) ? "checked" : ""}>${s}</label>`).join("")}</div></div></div><p class="error" id="form-error" role="alert"></p><div class="dialog-actions">${old ? `<button type="button" class="btn danger" id="delete-med">Delete</button><button type="button" class="btn" id="refill-med">New refill?</button>` : ""}<button class="btn primary" type="submit">Save medication</button></div></form>`,
+        )}</select></label><label class="field-group">Shape<select name="shape">${["Round", "Oval", "Capsule"].map((c) => `<option ${m.shape === c ? "selected" : ""}>${c}</option>`).join("")}</select></label><label class="field-group">Imprint<input name="imprint" value="${esc(m.imprint)}" maxlength="60" placeholder="Letters / numbers"></label><label class="field-group">Manufacturer (optional)<input name="manufacturer" value="${esc(m.manufacturer)}" maxlength="100"></label><label class="field-group full">NDC from bottle (optional)<input name="ndc" value="${esc(m.ndc || "")}" maxlength="20" placeholder="e.g. 00093-0148-01"></label><div class="field-group full"><span>When</span><div class="checks">${SLOTS.map((s) => `<label><input name="slots" value="${s}" type="checkbox" ${m.slots.includes(s) ? "checked" : ""}>${s}</label>`).join("")}</div></div></div><p class="error" id="form-error" role="alert"></p><div class="dialog-actions">${old ? `<button type="button" class="btn danger" id="delete-med">Delete</button><button type="button" class="btn" id="refill-med">New refill?</button>` : ""}<button class="btn primary" type="submit">Save medication</button></div></form>`,
   );
   let selectedRx = m.rx;
   const medForm = $("#med-form");
@@ -894,7 +902,7 @@ function medicationForm(id) {
     resetCheck();
     $("#modal").close();
     render();
-    toast("Medication saved to your care plan.");
+    toast("Medication saved.");
   };
   if (old) $("#refill-med").onclick = () => refill(old.id);
   if (old)
@@ -924,7 +932,7 @@ function confirmDialog(title, body, fn, label = "Confirm") {
 function newProfile() {
   openDialog(
     dialogHead("Who are we caring for?") +
-      `<form id="profile-form"><label class="field-group">First name or nickname<input id="profile-name" required maxlength="50" placeholder="e.g. Alex" autocomplete="off"></label><p class="small muted" style="margin-top:15px">A new profile starts with an empty medication plan. All profiles stay on this browser.</p><div class="dialog-actions"><button class="btn primary">Create profile</button></div></form>`,
+      `<form id="profile-form"><label class="field-group">First name or nickname<input id="profile-name" required maxlength="50" placeholder="e.g. Alex" autocomplete="off"></label><div class="dialog-actions"><button class="btn primary">Create profile</button></div></form>`,
   );
   $("#profile-form").onsubmit = (e) => {
     e.preventDefault();
@@ -952,8 +960,8 @@ function newProfile() {
 function refill(id) {
   const m = patient().meds.find((x) => x.id === id);
   openDialog(
-    dialogHead("A new refill, a closer look.") +
-      `<p class="small muted">Compare the new bottle and pill with your saved details for ${esc(m.name)}. A change in appearance does not establish what medicine it is.</p><div class="note section-gap">Saved: ${esc(m.color)} ${esc(m.shape)} · Imprint ${esc(m.imprint || "not recorded")}<br>Manufacturer: ${esc(m.manufacturer || "not recorded")}</div><form id="refill-form" class="section-gap"><label class="field-group">What changed?<select name="change"><option value="appearance">Color, shape, or imprint looks different</option><option value="manufacturer">Manufacturer on the label changed</option><option value="none">No changes noticed</option></select></label><label class="field-group section-gap">Your note<textarea name="note" rows="3" maxlength="500" placeholder="What you noticed or what your pharmacist confirmed"></textarea></label><div id="refill-warning" class="note amber section-gap">Confirm an unfamiliar pill with your pharmacist. This app cannot verify a manufacturer substitution.</div><div class="dialog-actions"><button class="btn primary">Save refill note</button></div></form>`,
+    dialogHead("New refill") +
+      `<div class="note">Saved: ${esc(m.color)} ${esc(m.shape)} · Imprint ${esc(m.imprint || "not recorded")}<br>Manufacturer: ${esc(m.manufacturer || "not recorded")}</div><form id="refill-form" class="section-gap"><label class="field-group">What changed?<select name="change"><option value="appearance">Color, shape, or imprint looks different</option><option value="manufacturer">Manufacturer on the label changed</option><option value="none">No changes noticed</option></select></label><label class="field-group section-gap">Your note<textarea name="note" rows="3" maxlength="500" placeholder="What you noticed or what your pharmacist confirmed"></textarea></label><div class="dialog-actions"><button class="btn primary">Save refill note</button></div></form>`,
   );
   $("#refill-form").onsubmit = (e) => {
     e.preventDefault();
@@ -972,7 +980,7 @@ function refill(id) {
     save();
     $("#modal").close();
     render();
-    toast("Refill note saved in Care circle.");
+    toast("Refill note saved.");
   };
 }
 function cellDialog(key) {
@@ -1011,8 +1019,8 @@ function logDose(status) {
     at: new Date().toISOString(),
     note:
       status === "taken"
-        ? "Self-reported after checking the pharmacy label and dose plan"
-        : result?.title || "Concern reported",
+        ? "Logged after a scan"
+        : "Concern reported after a scan",
     medications: dosesFor(p, selectedSlot).map((m) => ({
       name: m.name,
       strength: m.strength,
@@ -1036,7 +1044,7 @@ function logDose(status) {
   toast(
     status === "taken"
       ? "Dose logged. Nice work!"
-      : "Concern saved. Ask a caregiver or pharmacist for help.",
+      : "Problem saved to history.",
   );
 }
 function speak() {
@@ -1046,11 +1054,11 @@ function speak() {
   }
   const lang = state.language || "en-US",
     texts = {
-      "en-US": `Hello ${patient().name}. Review the ${selectedSlot.toLowerCase()} dose against your prescription plan. A photo will be sent to our detection model for a visual suggestion. Check every pill against the pharmacy label; if anything is unclear, ask a caregiver or pharmacist.`,
+      "en-US": `Hello ${patient().name}. Spread the ${selectedSlot.toLowerCase()} pills on a plain surface with the imprints up, then take a photo.`,
       "es-US":
-        "La foto se enviará a nuestro modelo de detección para obtener una sugerencia visual. Compare cada pastilla con la etiqueta de la farmacia y consulte a su farmacéutico si tiene dudas.",
+        "Coloque las pastillas sobre una superficie lisa con la marca hacia arriba y tome una foto.",
       "zh-CN":
-        "照片会发送到我们的检测模型获取视觉建议。请将每片药与药房标签核对；如有疑问，请咨询药剂师。",
+        "请把药片平放在纯色表面上，印字朝上，然后拍一张照片。",
     };
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(texts[lang] || texts["en-US"]);
@@ -1078,7 +1086,7 @@ function report() {
       .filter((r) => r.at.slice(0, 10) >= dayKey(cutoff))
       .map((r) => `<p>${esc(r.name)}: ${esc(r.note)}</p>`)
       .join("") || "<p>No refill notes this week.</p>"
-  }<p>This is a self-reported record, not proof of ingestion or pill identity. PillCheck is a double-check aid and does not replace a pharmacist. Suggestions from our detection model are unverified and can be wrong. No clinical accuracy guarantee is active.</p>`;
+  }<p>Self-reported record from PillCheck, a research prototype.</p>`;
   window.print();
 }
 function exportData() {
@@ -1101,7 +1109,6 @@ function setPhoto(f) {
   if (photoUrl) URL.revokeObjectURL(photoUrl);
   scanVersion++;
   scan = null;
-  result = null;
   scanBusy = false;
   photo = f;
   photoUrl = URL.createObjectURL(f);
@@ -1127,7 +1134,6 @@ function bind() {
         if (page !== "check") resetCheck();
         selectedSlot = b.dataset.slot;
         observations = {};
-        result = scan ? visualSuggestionResult() : null;
         if (page !== "check") nav("check");
         else render();
       }),
@@ -1140,7 +1146,6 @@ function bind() {
         scanVersion++;
         scanBusy = false;
         scan = null;
-        result = null;
         render();
         if (photo) analyzePhoto();
       }),
@@ -1242,11 +1247,7 @@ function bind() {
       }
     },
     "go-meds": () => nav("meds"),
-    "log-taken": () => {
-      if (!$("#manual-dose-confirm")?.checked)
-        return toast("Check each pill against the pharmacy label and dose plan first.");
-      logDose("taken");
-    },
+    "log-taken": () => logDose("taken"),
     "log-concern": () => logDose("concern"),
     reset: () =>
       confirmDialog(
@@ -1267,10 +1268,6 @@ function bind() {
   document
     .querySelectorAll("[data-action]")
     .forEach((b) => (b.onclick = () => actions[b.dataset.action]?.()));
-  if ($("#manual-dose-confirm"))
-    $("#manual-dose-confirm").onchange = (e) => {
-      $("#manual-log").disabled = !e.target.checked;
-    };
   if ($("#med-search"))
     $("#med-search").oninput = (e) => {
       const pos = e.target.selectionStart;

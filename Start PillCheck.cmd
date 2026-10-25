@@ -5,5 +5,5 @@ where node >nul 2>nul || (echo Node.js 22 or newer is required: https://nodejs.o
 if not exist node_modules\onnxruntime-web\dist\ort.wasm.bundle.min.mjs (
   call npm ci || (pause & exit /b 1)
 )
-node server.mjs --open
+node --env-file-if-exists=.env server.mjs --open
 pause

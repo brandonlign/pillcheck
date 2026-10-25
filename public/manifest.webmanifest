@@ -1,7 +1,7 @@
 {
   "name": "PillCheck",
   "short_name": "PillCheck",
-  "description": "Double-check every dose with one photo. Private, on-device pill recognition.",
+  "description": "Double-check every dose with one photo.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f2f2f7",

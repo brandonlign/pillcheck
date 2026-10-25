@@ -4,7 +4,7 @@ Use this page to fill in the submission form, plan the demo video, and prepare f
 
 ## One-line pitch
 
-**PillCheck lets families double-check every dose with one photo.** It finds each pill in the picture, recognizes it against 9,804 NIH reference images with a model that runs entirely on the device, and says plainly whether the dose matches the prescription plan. When it isn't sure, it says "not sure" instead of guessing.
+**PillCheck lets families double-check every dose with one photo.** Our detection model finds each pill, reads its color, shape and imprint, and PillCheck checks the count and imprints against the prescription plan in about two seconds.
 
 ## The problem
 
@@ -20,28 +20,29 @@ Explain the real moment that started the project: a family member, a pill organi
 
 ## What it does
 
-1. **Plan:** add each prescription (name, strength, schedule, the NDC printed on the bottle). Optional lookup in NLM RxNorm.
-2. **Check:** pick the dose time, take one photo of the pills on a plain surface.
-3. **Answer:** a green, amber or red verdict in plain language:
-   - *Matches your plan*: every pill recognized confidently, counts match.
-   - *Not sure*: a match is too weak or too close to a look-alike, so no guess is made.
-   - *Unexpected pill* / *counts don't match*: tells you exactly what to recheck.
-4. **Track:** log the dose, review the week, print a report for a doctor or pharmacist, and review a weekly organizer one compartment at a time.
+1. **Plan:** add each prescription (name, strength, schedule, and the imprint printed on the pill). Optional name lookup in NLM RxNorm.
+2. **Scan:** pick the dose time and take one photo of the pills on a plain surface. Live outlines show each pill in the camera preview.
+3. **Result:** a card lists every pill found with its color, shape and imprint, says whether the count matches the plan, and marks each pill whose imprint matches a saved medication.
+4. **Track:** log the dose, see the week and streak, print a report for a doctor or pharmacist, and review a weekly organizer one compartment at a time.
 
 ## How it works (technical summary for judges)
 
 | Part | What it is |
 |---|---|
-| Detection | In-browser background segmentation, morphology and connected components find separated pills. |
-| Recognition | DINOv2 ViT-S/14 vision transformer, **fully fine-tuned** on the ePillID benchmark (NIH Pillbox images) with pill-specific augmentation and a CosFace metric-learning loss. Each pill becomes a 256-number embedding compared with every reference image. |
-| Gallery | 9,804 front/back reference images (each averaged over four rotations) plus training-split phone photos, covering 4,902 pill identities. |
-| Safety gate | A similarity threshold and a runner-up margin, chosen on calibration photos only, decide when the model may answer. Otherwise it abstains. |
-| Runtime | ONNX Runtime Web (WebAssembly). No server-side AI, no account, works offline as an installable web app. |
-| App | Vanilla JavaScript, no framework; Node.js static server with an RxNorm lookup proxy. |
+| Live outlines | In-browser background segmentation, morphology and connected components draw a box around each separate pill in the camera preview. |
+| Detection | The photo is resized in the browser and sent through the PillCheck server to our detection model, a hosted vision model prompted to return structured JSON (count, then color, shape, imprint and a possible name for each pill). |
+| Parsing | The server validates the image, rate-limits requests, and parses the model's JSON with a fallback that still recovers pills from malformed output. Tested in `tests/analysis.test.mjs`. |
+| Plan matching | Imprints are normalized and compared with each saved medication, allowing one misread character (for example "PAIN 5" vs "PAN 5"). The pill count is compared with the planned quantity. |
+| Storage | Plans and logs stay in the browser's local storage. No accounts, no analytics. Photos are not stored. |
+| App | Vanilla JavaScript, no framework; installable web app; Node.js server with the detection and RxNorm proxies. |
 
-### Accuracy, measured honestly
+## Research history: the on-device model
 
-Measured on 960 phone photos that were never used for training or threshold selection (same split as version 1):
+Before the current detection model, PillCheck ran its own pill recognizer in the browser. It is still in the repository (`vision/`, `public/models/`) and is a good story for judges about the machine-learning work.
+
+- DINOv2 ViT-S/14 vision transformer, fully fine-tuned on the ePillID benchmark (NIH Pillbox images) with pill-specific augmentation and a CosFace metric-learning loss.
+- 9,804 reference images covering 4,902 pill identities.
+- Measured on 960 held-out phone photos:
 
 | Metric | v1 (frozen backbone) | v2 (fine-tuned) |
 |---|---:|---:|
@@ -50,56 +51,47 @@ Measured on 960 phone photos that were never used for training or threshold sele
 | Confident answers (coverage) | 20.8% | **49.1%** |
 | Right when confident (precision) | 89.0% | **92.1%** |
 
-The app uses the stricter of two confidence gates chosen on calibration data, trading some coverage for being right more often when it answers. It is better than v1 on both counts: 2.4× as many confident answers, and more of them correct.
-
-What changed in v2:
-
-- **Whole-network fine-tuning** instead of training only a small head on frozen features, with layer-wise learning-rate decay so the pretrained knowledge isn't destroyed.
-- **Pill-aware augmentation:** any-angle rotation, scale, lighting and contrast changes, blur and sensor noise. No mirror flips, because imprints are never mirrored in real photos, and almost no hue change, because color identifies pills.
-- **CosFace margin loss** pushes look-alike pills apart in embedding space.
-- **Better gallery:** rotation-averaged references plus in-domain phone photos from the training split.
-
-Limitations to state openly: this is a research benchmark on already-cropped photos of known pills, not a clinical study. There is no imprint OCR or barcode scanning, the NIH library is historical, and touching pills can confuse the detector.
+Why it was replaced: it only knew pills in the historical NIH library and needed already-cropped photos, while the detection model reads imprints on any pill in a full photo. These numbers describe the retained model, not the current detection model.
 
 ## Design process (good to mention to judges)
 
-The interface was redesigned after studying the top-rated apps in the category on the App Store (Medisafe, MyTherapy, Apple Health Medications) and apps famous for their design (Streaks, an Apple Design Award winner, and Duolingo). PillCheck borrows their proven patterns: a time-grouped "Today" list with check circles, progress rings and streaks for motivation, a camera viewfinder for scanning, and tactile buttons, so it feels familiar from the first tap.
+The interface was redesigned after studying the top-rated apps in the category on the App Store (Medisafe, MyTherapy, Apple Health Medications) and apps famous for their design (Streaks, an Apple Design Award winner, and Duolingo). PillCheck borrows their proven patterns: a time-grouped "Today" list with check circles, progress rings and streaks, a camera viewfinder for scanning, and tactile buttons. A later pass cut extra captions and warnings so each screen has one clear job.
 
 ## Accessibility and inclusion
 
 - Large touch targets (at least 44 px), a "Larger text" setting that scales the whole interface, and light/dark themes.
 - Read-aloud guidance in English, Spanish and Mandarin.
-- Keyboard navigation, visible focus, a skip link, reduced-motion support, and plain-language results.
-- Free, no account, no tracking; works on any phone or laptop browser and offline after the first load.
+- Keyboard navigation, visible focus, a skip link and reduced-motion support.
+- Free, no account, no tracking; works in any phone or laptop browser.
 
 ## Privacy
 
-Photos and recognition never leave the device. Records live in the browser's local storage. The only network request is the optional medication-name lookup to the National Library of Medicine.
+Plans and logs live in the browser's local storage. Photos are analyzed by our detection model and are not stored. The only other network request is the optional medication-name lookup to the National Library of Medicine.
 
 ## Demo video plan (keep within the official length limit)
 
 | Time | Show | Say |
 |---|---|---|
 | 0:00–0:20 | You, or a caregiver scene with a pill organizer | The problem, in one personal sentence. |
-| 0:20–0:40 | Welcome screen | "PillCheck double-checks every dose with one photo, privately on your phone." |
-| 0:40–1:20 | Add a medication, then **Check a dose**: take a real photo | Point out the detection box and the green verdict. |
-| 1:20–1:50 | A wrong or extra pill, or a look-alike | Show the amber/red result and "not sure". This is the safety story. |
-| 1:50–2:20 | Accuracy panel, Care circle, printable report, Larger text, read-aloud | Accessibility and honesty about accuracy. |
-| 2:20–2:40 | Code or architecture slide | On-device AI, fine-tuned vision transformer, what you'd build next. |
+| 0:20–0:40 | Welcome screen and Today | "PillCheck double-checks every dose with one photo." |
+| 0:40–1:20 | Add a medication with its imprint, then **Scan**: live outlines, take a real photo | Point out the per-pill result and the green "Matches" labels. |
+| 1:20–1:50 | Scan with a pill missing or a wrong pill | Show the count mismatch and the pill without a match. |
+| 1:50–2:20 | Streak, history, printable report, Larger text, read-aloud | Accessibility and caregiver features. |
+| 2:20–2:40 | Architecture slide | Live outlines, detection model, plan matching, and the on-device model you trained first. |
 
 Tips: record the screen at 1080p; use a phone on a stand for real photos; use a plain dark or light mat; keep the background quiet; add captions.
 
 ## Judging questions to rehearse
 
-- *How do you know it works?* Held-out test set, numbers above, and the fact that thresholds were chosen without looking at the test set.
-- *What happens when it's wrong?* It abstains when unsure; even a match tells the user to follow the prescription and ask a pharmacist.
-- *Why on-device?* Health privacy, works offline, no server costs, free for everyone.
-- *What would you add next?* Imprint OCR, bottle barcode scanning, a trained pill detector for touching pills, a native app, and a study with real users.
+- *How does the detection work?* The browser draws live outlines; the photo goes through the PillCheck server to our detection model, which returns structured JSON; PillCheck then matches imprints and counts against the plan.
+- *Did you build the model?* Be ready to explain both parts honestly: the detection model is a hosted vision model you prompt and parse, and you separately trained and evaluated the on-device DINOv2 recognizer (numbers above).
+- *What happens when it's wrong?* The count and the imprint matches make a wrong or missing pill stand out, and every dose is still confirmed by the user before it is logged.
+- *What would you add next?* Bottle barcode scanning, a measured accuracy study for the detection model on real doses, a native app, and caregiver sync.
 
 ## Submission checklist
 
 - [ ] Confirm eligibility, district participation, team size and the deadline on the official site.
-- [ ] Public code repository with this README and docs (check that no personal data or keys are committed).
+- [ ] Public code repository with this README and docs (check that no personal data or keys are committed; `.env` is gitignored).
 - [ ] Demo video uploaded as the rules require (for example YouTube or Vimeo, public or unlisted).
 - [ ] App description, inspiration, technical challenges and next steps written in your own words.
 - [ ] Cited statistics in the problem statement.

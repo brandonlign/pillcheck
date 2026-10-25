@@ -1,38 +1,30 @@
 # PillCheck
 
-**Double-check every dose with a live camera.** PillCheck draws live object outlines in the browser and sends a compressed photo to our detection model for a visual suggestion. The model does not verify pill identity against a prescription plan.
+**Double-check every dose with one photo.** Our detection model finds each pill and reads its color, shape and imprint, and PillCheck checks the count and imprints against your medication plan.
 
-This is a research prototype, not a clinically validated medication identifier. Treat every AI result as uncertain and check each pill against its pharmacy label or with a pharmacist.
+Research prototype, not a medical device.
+
 ## Run
 
 Node.js 22 or newer:
 
 ```sh
 npm ci
-PILLCHECK_API_KEY=your_key_here npm start
+echo "PILLCHECK_API_KEY=your_key_here" > .env
+npm start
 ```
 
-Set `PILLCHECK_API_KEY` in the server environment. Never put the key in browser code or commit it to the repository. Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
+`npm start` and the launchers load `.env` automatically (it is gitignored). Never put the key in browser code or commit it. `PILLCHECK_MODEL` overrides the detection model. Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
 
 **Use a phone:** start the server with `HOST=0.0.0.0 npm start` and open `http://<this-computer's-IP>:4173` on the same Wi-Fi. Live camera access and PWA installation need HTTPS or `localhost`.
 
-## Scan a photo
+## How a scan works
 
-1. Open **Check a dose** and start the live camera, or choose **Upload**.
-2. Live outlines run locally. Capturing or selecting a photo resizes it and sends a JPEG to our detection model for processing. Avoid including labels, faces, or personal documents.
-3. Review the visual suggestion, then compare every pill with its pharmacy label and saved plan. The model output is unverified and cannot authorize a dose. Confirm manually before logging.
+1. Open **Scan**, pick the dose time, and start the live camera or upload a photo. Live outlines are drawn in the browser.
+2. The photo is resized to a JPEG and sent through the PillCheck server to our detection model, which returns each pill's color, shape, imprint and a possible name as JSON (`analysis.mjs` parses it). A scan takes about two seconds.
+3. PillCheck compares the pill count with the plan and marks pills whose imprint matches a saved medication (one misread character allowed). Log the dose or flag a problem.
 
-## What the scan actually does
-
-- **Live outlines:** browser-based background segmentation, morphology, and connected components. It can mistake other objects for pills or miss touching pills.
-- **Visual suggestion:** the server sends the photo to our detection model for processing. It may describe appearance, transcribe a visible imprint, or suggest possibilities; there is no automatic identity-to-plan match.
-- **Limits:** our detection model can misread an imprint or invent an identity. It is not a clinical pill identifier, chemical assay, counterfeit check, or proof of a current product’s appearance.
-- **Privacy:** the browser resizes photos and converts them to JPEG before upload. PillCheck does not persist the image.
-- **Retained model:** the DINOv2 weights and evaluation report in `public/models/` remain for research history, but the app does not load or call that model.
-
-## Retained model evaluation
-
-The report in [`public/models/evaluation.json`](public/models/evaluation.json) measures the retained on-device DINOv2 model only. Those figures do not measure our detection model and are not current app accuracy.
+Photos are not stored. The retained on-device DINOv2 model in `public/models/` is kept for research history; its report in [`public/models/evaluation.json`](public/models/evaluation.json) does not measure the detection model.
 ## Interface
 
 The UI is modelled on the patterns shared by the best-rated apps in this space, studied from their App Store screens: **Medisafe** (4.7★, 102K ratings), **MyTherapy** (4.8★), Apple Health Medications, the Apple Design Award winner **Streaks** (4.8★), **Duolingo** (4.7★, 5.5M ratings) and top medication-app concepts on Dribbble.
@@ -48,7 +40,7 @@ The UI is modelled on the patterns shared by the best-rated apps in this space, 
 
 - Separate local care profiles; add/edit/delete medication plans and appearance notes.
 - Live RxNorm name/NDC lookup, with manual label entry if unavailable.
-- Dose logging requires a manual confirmation against the pharmacy label and saved plan.
+- Per-pill scan results with count and imprint matching against the saved plan.
 - Manual 7×1, 7×2, and 7×4 organizer review, preparation notes, and refill-change notes.
 - Local caregiver view, self-reported logging history/trends, correction of mistaken records, and printable weekly reports. Use the system print dialog's **Save as PDF**.
 - Larger text, keyboard controls, and browser read-aloud guidance in English, Spanish, and Mandarin; visual UI remains English.
@@ -58,11 +50,11 @@ Morning is 00:00–11:59, afternoon 12:00–16:59, evening 17:00–20:59, and be
 
 ## What is still not implemented
 
-Bottle OCR/barcode scanning; automated imprint OCR; arbitrary organizer detection; validated look-alike sensitivity; remote caregiver accounts, sync, and alerts; native mobile packaging; clinical validation; and a conformal/clinical error guarantee. Phone hardware performance has not been formally measured.
+Bottle barcode scanning; arbitrary organizer detection; a measured accuracy study for the detection model; validated look-alike sensitivity; remote caregiver accounts, sync, and alerts; native mobile packaging; clinical validation; and a conformal/clinical error guarantee. Phone hardware performance has not been formally measured.
 
 ## Data and privacy
 
-Plans and logs are stored unencrypted in browser localStorage. Someone using the same browser profile can read them, and storage can be cleared. Export backups carefully. Each selected photo is resized in the browser and sent through the PillCheck server to our detection model. PillCheck does not persist photos. User-triggered medication search sends the entered name/NDC to NLM; browser speech may process spoken text externally. PillCheck does not run analytics or tracking and has no remote patient database.
+Plans and logs are stored unencrypted in browser localStorage. Export backups carefully. Photos are analyzed by our detection model through the PillCheck server and are not stored. Medication lookup sends the entered name/NDC to NLM. PillCheck does not run analytics or tracking and has no remote patient database.
 
 Logging is self-reported and does not prove swallowing. Historical schedule edits can change past chart denominators; dates before a newly added medication's start date are excluded. Use one active entry tab; localStorage is not a transactional multi-user database.
 
@@ -72,7 +64,7 @@ Logging is self-reported and does not prove swallowing. Historical schedule edit
 npm test
 ```
 
-GitHub Actions installs the pinned runtime dependency, runs the tests, and checks syntax. Tests cover detection, reference ranking, NDC matching, unknown/extra/wrong pills, quality flags, dose gating, schedules, backups, and serving. They do not establish clinical accuracy.
+GitHub Actions installs the pinned runtime dependency, runs the tests, and checks syntax. Tests cover detection, detection-model output parsing, reference ranking, NDC matching, unknown/extra/wrong pills, quality flags, dose gating, schedules, backups, and serving. They do not establish clinical accuracy.
 
 To reproduce model training, use Python 3.12, `vision/requirements-lock.txt`, the public ePillID release, the fixed split/seed, and the scripts described in [docs/MODEL_CARD.md](docs/MODEL_CARD.md). Python and dataset downloads are development-only.
 
@@ -87,6 +79,7 @@ public/img/                Fluent Emoji 3D illustrations (MIT)
 public/sw.js               Offline cache (app shell network-first, model cache-first)
 public/core.js             Schedule/record and legacy guided-review rules
 server.mjs                 Static server, detection model proxy, RxNorm proxy
+analysis.mjs               Parses the detection model's JSON into a pill list
 vision/                    Training (train_finetune.py = v2), export checks, metadata scripts
 models/split.json          Exact image split used for training and evaluation
 tests/                     Logic, detector, inference, and server checks
