@@ -2,18 +2,14 @@
 
 - Lucide icons (ISC license, https://lucide.dev) at a pinned version
   -> public/icons.js (inner SVG markup keyed by icon name)
-- Microsoft Fluent Emoji 3D illustrations (MIT, https://github.com/microsoft/fluentui-emoji)
-  -> public/img/<name>.webp (resized to 192 px)
 
 Usage: python scripts/fetch_ui_assets.py
 """
-import io, json, re, urllib.parse, urllib.request
+import json, re, urllib.request
 from pathlib import Path
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 LUCIDE = "1.61.0"
-FLUENT_COMMIT = "main"
 
 ICONS = [
     "house", "pill", "scan-line", "camera", "chart-no-axes-column", "settings", "plus", "chevron-right",
@@ -22,13 +18,6 @@ ICONS = [
     "calendar-days", "sparkles", "circle-help", "trash-2", "sun-moon", "a-large-small", "languages",
     "lock", "wifi-off", "clock", "grid-3x3", "refresh-cw", "list-checks", "heart-pulse", "pencil",
 ]
-FLUENT = {
-    "pill": "Pill", "sunrise": "Sunrise", "sun": "Sun", "sunset": "Sunset", "night": "Night with stars",
-    "camera": "Camera with flash", "alarm": "Alarm clock", "check": "Check mark button", "warning": "Warning",
-    "fire": "Fire", "party": "Party popper", "heart": "Red heart", "calendar": "Spiral calendar",
-    "lock": "Locked", "search": "Magnifying glass tilted right", "chart": "Bar chart", "phone": "Mobile phone",
-    "question": "Red question mark", "cross": "Cross mark", "shield": "Shield",
-}
 
 
 def get(url):
@@ -47,19 +36,6 @@ def main():
     (ROOT / "public/icons.js").write_text(out, encoding="utf-8")
     print("icons", len(icons))
 
-    dest = ROOT / "public/img"
-    dest.mkdir(exist_ok=True)
-    for key, folder in FLUENT.items():
-        file = folder.lower().replace(" ", "_") + "_3d.png"
-        url = (f"https://raw.githubusercontent.com/microsoft/fluentui-emoji/{FLUENT_COMMIT}/assets/"
-               f"{urllib.parse.quote(folder)}/3D/{file}")
-        im = Image.open(io.BytesIO(get(url))).convert("RGBA")
-        im.thumbnail((192, 192), Image.LANCZOS)
-        im.save(dest / f"{key}.webp", "WEBP", quality=88, method=6)
-        print("fluent", key, (dest / f"{key}.webp").stat().st_size)
-    (dest / "LICENSE-fluentui-emoji.txt").write_text(
-        "Illustrations from Microsoft Fluent Emoji (https://github.com/microsoft/fluentui-emoji)\n"
-        "Copyright (c) Microsoft Corporation. Licensed under the MIT License.\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

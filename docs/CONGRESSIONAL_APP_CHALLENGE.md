@@ -46,10 +46,13 @@ The current scanner uses the on-device reference model trained for PillCheck (`v
 
 | Metric | v1 (frozen backbone) | v2 (fine-tuned) |
 |---|---:|---:|
-| Correct first guess (top-1) | 53.1% | **72.4%** |
-| Correct answer in top 3 | 76.3% | **85.1%** |
-| Confident answers (coverage) | 20.8% | **49.1%** |
-| Right when confident (precision) | 89.0% | **92.1%** |
+| Correct first guess (top-1) | 53.1% | **73.0%** |
+| Correct answer in top 3 | 76.3% | **85.2%** |
+| Confident answers (coverage) | 20.8% | **30.4%** |
+| Right when confident (precision) | 89.0% | **98.3%** |
+| Wrong pill caught (realistic plans) | — | **100% (960/960)** |
+| Wrong pill caught (worst-case look-alike plan) | — | **99.5% (955/960)** |
+| **With the flip step (both sides, plan-aware)**: right pills confirmed | — | **67%** at **100%** precision, 96% of look-alikes caught (359 held-out pills) |
 
 The model only covers identities in the ePillID reference library, and its benchmark photos are already cropped. Its numbers measure reference retrieval, not pill segmentation or complete-dose accuracy. The current app has not been evaluated on an independent set of household photos or unknown pills. See [`MODEL_CARD.md`](MODEL_CARD.md) for the split, threshold selection, and limitations.
 
@@ -84,7 +87,7 @@ Tips: record the screen at 1080p; use a phone on a stand for real photos; use a 
 ## Judging questions to rehearse
 
 - *How does the scan work?* The browser draws live outlines, runs the DINOv2 reference model locally on each crop, abstains below its threshold, then compares accepted reference NDCs and counts with the saved plan.
-- *Did you build the model?* The DINOv2 backbone was fine-tuned on the ePillID benchmark with pill-specific augmentation and a CosFace loss. The strict threshold accepted 471 of 960 held-out crops, and 434 accepted matches were correct (92.1%). This is a research benchmark, not clinical validation.
+- *Did you build the model?* The DINOv2 backbone was fine-tuned on the ePillID benchmark with pill-specific augmentation and a CosFace loss. Each pill is checked at four rotations and only accepted when they agree; that gate accepted 292 of 960 held-out crops and 287 were correct (98.3%). Even when a plan contains a pill's closest look-alike, 99.5% of wrong pills are still caught. This is a research benchmark, not clinical validation.
 - *What happens when it's wrong?* A wrong accepted match remains possible. The app labels matches as research results, and users must compare against the bottle and confirm the dose themselves.
 - *What would you add next?* Test end-to-end detection and matching on diverse phone photos, improve unknown-pill rejection, add barcode lookup, and evaluate caregiver workflows.
 
@@ -97,4 +100,4 @@ Tips: record the screen at 1080p; use a phone on a stand for real photos; use a 
 - [ ] Cited statistics in the problem statement.
 - [ ] Test the app on a phone: run `HOST=0.0.0.0 npm start` on the laptop and open `http://<laptop-ip>:4173` on the phone (same Wi-Fi).
 - [ ] Run `npm test` and confirm it passes.
-- [ ] Credit data sources: ePillID / NIH NLM, openFDA, RxNorm, DINOv2, ONNX Runtime, Lucide icons, Microsoft Fluent Emoji.
+- [ ] Credit data sources: ePillID / NIH NLM, openFDA, RxNorm, DINOv2, ONNX Runtime, Lucide icons, DM Sans and Manrope fonts.

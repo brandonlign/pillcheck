@@ -36,6 +36,46 @@ export function rankEmbeddings(
   }
   return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
+// Plan-aware check: is this pill one of the plan's medicines? Confirm plan product X
+// when its score clears the gate's similarity, nothing outside the plan beats it by
+// more than `ahead`, and it leads the next plan medicine by `margin`. Mirrors
+// vision/plan_check.py; gates come from vision/flip_gate.py (held-out pairs).
+export function planDecision(scores, planIndices, gate) {
+  if (!scores || !gate || !planIndices.length) return -1;
+  let best = -Infinity;
+  for (let i = 0; i < scores.length; i++) if (scores[i] > best) best = scores[i];
+  let x = -1,
+    sx = -Infinity,
+    s2 = -Infinity;
+  for (const i of planIndices) {
+    const v = scores[i];
+    if (v > sx) {
+      s2 = sx;
+      sx = v;
+      x = i;
+    } else if (v > s2) s2 = v;
+  }
+  return sx >= gate.similarity && sx >= best - gate.ahead && sx - s2 >= gate.margin ? x : -1;
+}
+function planAware(scan, expected) {
+  const index = scan.productIndex,
+    keys = [...new Set(expected.map((m) => productNdc(m.ndc || m.pillId)))],
+    planIndices = keys.map((k) => index.get(k)).filter((i) => i !== undefined),
+    keyOf = new Map(keys.map((k) => [index.get(k), k])),
+    matches = [],
+    unsure = [];
+  let wrong = false;
+  scan.pills.forEach((pill, i) => {
+    const gate = pill.sides === 2 ? scan.planGate.flipped : scan.planGate.photo,
+      hit = planDecision(pill.scores, planIndices, gate);
+    if (hit >= 0) return matches.push(keyOf.get(hit));
+    matches.push(null);
+    // Confidently a different product (global gate) -> wrong pill; otherwise unsure.
+    if (pill.accepted && !keys.includes(productNdc(pill.candidates[0]?.ndc))) wrong = true;
+    else unsure.push(i);
+  });
+  return { keys, matches, unsure, wrong };
+}
 export function evaluateScan(patient, slot, scan, { day, currentSlot } = {}) {
   if (
     patient.logs.some(
@@ -90,6 +130,52 @@ export function evaluateScan(patient, slot, scan, { day, currentSlot } = {}) {
       detail:
         "Enter the exact NDC from each bottle in Medications. A medication name alone does not identify its manufacturer-specific appearance.",
     };
+  if (scan.productIndex && scan.planGate && scan.pills.every((p) => p.scores)) {
+    const { keys, matches, unsure, wrong } = planAware(scan, expected);
+    if (wrong)
+      return {
+        type: "wrong",
+        matches,
+        title: "An unexpected pill may be present",
+        detail: "At least one pill looks like a medicine that isn’t in this dose. Check the bottle and ask your pharmacist about unfamiliar pills.",
+      };
+    const flip = unsure.filter((i) => scan.pills[i].sides !== 2);
+    if (flip.length)
+      return {
+        type: "flip",
+        matches,
+        flip,
+        title: "Flip to confirm",
+        detail: `Turn pill ${flip.map((i) => i + 1).join(" and ")} over and scan the other side so PillCheck can be sure.`,
+      };
+    if (unsure.length)
+      return {
+        type: "uncertain",
+        matches,
+        title: "Not sure about every pill",
+        detail: "Even with both sides, at least one pill isn’t a confident match. Check the bottle label or ask a pharmacist.",
+      };
+    const counts = new Map();
+    for (const k of matches) counts.set(k, (counts.get(k) || 0) + 1);
+    const planned = new Map();
+    for (const m of expected) {
+      const k = productNdc(m.ndc || m.pillId);
+      planned.set(k, (planned.get(k) || 0) + m.quantity);
+    }
+    if (keys.some((k) => counts.get(k) !== planned.get(k)))
+      return {
+        type: "missing",
+        matches,
+        title: "The detected counts do not match",
+        detail: "The photo has a different number of one or more expected pills. Recheck the prepared dose.",
+      };
+    return {
+      type: "matched",
+      matches,
+      title: "Photo matches the saved pill references",
+      detail: "Every pill matches a medicine in this dose, and the counts are right. Follow your prescription and check unfamiliar pills with a pharmacist.",
+    };
+  }
   if (scan.pills.some((p) => !p.accepted))
     return {
       type: "uncertain",

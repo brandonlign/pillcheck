@@ -16,15 +16,21 @@ Educational research and a Congressional App Challenge prototype for automatic v
 
 | Held-out test (960 photos) | v1 | v2 |
 |---|---:|---:|
-| Top-1 product NDC | 53.1% | 72.4% |
-| Top-3 | 76.3% | 85.1% |
-| Accepted by gate | 200 (20.8%) | 471 (49.1%) |
-| Correct among accepted | 178 (89.0%) | 434 (92.1%) |
+| Top-1 product NDC (4-rotation) | 53.1% | 73.0% |
+| Top-3 (4-rotation) | 76.3% | 85.2% |
+| Accepted by gate | 200 (20.8%) | 292 (30.4%) |
+| Correct among accepted | 178 (89.0%) | 287 (98.3%) |
 | Gate (similarity / margin) | 0.77 / 0.06 | 0.69 / 0.13 |
 
-Two abstention gates were selected on calibration data only: the v1 rule (largest accepted set with ≥90% calibration precision; similarity ≥ 0.60, margin ≥ 0.08) and a strict rule (≥95%; similarity ≥ 0.69, margin ≥ 0.13). On test, the 90% gate accepts 640 photos with 560 correct (87.5%), and the strict gate accepts 471 with 434 correct (92.1%). **The app ships the strict gate**, because a medication check should favour being right when it answers. This choice between the two calibration-selected gates was made after seeing both test results; both are recorded in `evaluation.json` (`strictGate`, `standardGate`). Query-time rotation averaging would add about one point of calibration top-1 (74.5% vs 73.4%) but costs four forward passes per pill in the browser, so it is not used. Demo examples were re-selected for v2 with `vision/finalize_v2.py` (correct, accepted, high-margin test photos; illustrative, not random).
+Two abstention gates were selected on calibration data only: the v1 rule (largest accepted set with ≥90% calibration precision; similarity ≥ 0.60, margin ≥ 0.08) and a strict rule (≥95%; similarity ≥ 0.69, margin ≥ 0.13). On test, the 90% gate accepts 640 photos with 560 correct (87.5%), and the strict gate accepts 471 with 434 correct (92.1%). **The app ships the strict gate**, because a medication check should favour being right when it answers. This choice between the two calibration-selected gates was made after seeing both test results; both are recorded in `evaluation.json` (`strictGate`, `standardGate`). **Update (4-rotation agreement gate, shipped):** the browser now embeds each pill at 0/90/180/270°, ranks the averaged embedding, and accepts only when similarity ≥ 0.77, runner-up margin ≥ 0.24 and at least 2 single rotations agree on the same product (`vision/confidence_gate.py`, chosen on calibration only as the highest-precision gate with ≥20 accepted: 97.0% calibration precision). On test it accepts 292/960 with 287 correct (98.3%); single-pass top-1 72.4% becomes 73.0% with rotation averaging. Plan simulation on test: 0/960 false matches with random three-medication plans and 5/960 when the plan contains the predicted look-alike. The 5 test errors (and 8 calibration errors) are same-drug strength confusions (e.g. clonidine 0.1 vs 0.2 mg), multi-tablet contraceptive packs whose tablets are physically shared across products, and one clonidine/atenolol look-alike. A higher-precision gate was not reachable on calibration; >99% would need imprint reading or higher-resolution input. Cost: four forward passes per pill (about 1–1.5 s per pill in the browser). Demo examples were re-selected for v2 with `vision/finalize_v2.py` (correct, accepted, high-margin test photos; illustrative, not random).
 
 The v1 description below is kept for provenance. Everything in "Failure modes" still applies to v2.
+
+### Plan-aware check and flip step (shipped)
+
+The app checks each pill against the dose's planned medicines rather than asking for a 4,826-way identification. A plan medicine X is confirmed when its score is at least the gate's similarity, no product outside the plan scores more than `ahead` above it, and it leads the next plan medicine by `margin` (`planDecision` in `public/recognition-core.js`, mirrored by `vision/plan_check.py`). Pills not confirmed from the first photo are flipped; the two sides' per-product scores are averaged and checked with a second gate. A pill confidently identified (global gate) as a product outside the plan is reported as a wrong pill.
+
+Gates (`catalog.json` → `planGate`): photo similarity 0.88 / ahead 0 / margin 0; flipped similarity 0.70 / ahead 0.02 / margin 0. Chosen by `vision/flip_gate.py --cap 0.03` on held-out front/back pairs (a calibration photo and a test photo of opposite sides of the same pill, 359 pills) under: right-pill precision ≥ 99.5%, random wrong pills confirmed ≤ 0.5%, look-alike wrong pills confirmed ≤ 3%. With 2-fold cross-validation by identity: 67.1% of right pills confirmed (24.0% without a flip), 100% precision, 100% of random wrong pills caught, 96.4% of look-alike wrong pills caught. Single-photo plan-aware results on all 960 test photos are in `vision/plan_check.py` output (e.g. 49.5% confirmed with 93% of look-alikes caught). Limits: small sample; random three-medicine plans; look-alike = the single most similar product; the flip assumes the user photographs the same pill.
 
 ## Version 1 (previous)
 

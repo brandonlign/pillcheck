@@ -10,14 +10,14 @@
   "encoder": "DINOv2 ViT-S/14 (fully fine-tuned)",
   "pretrainedCalibrationTop1": 0.1179,
   "trainedCalibrationTop1": 0.7338403041825095,
-  "testTop1": 0.7239583333333334,
-  "testTop3": 0.8510416666666667,
-  "testAccepted": 471,
-  "testAcceptedCorrect": 434,
-  "calibrationAccepted": 534,
-  "calibrationAcceptedCorrect": 482,
-  "scoreThreshold": 0.6900000000000004,
-  "marginThreshold": 0.13,
+  "testTop1": 0.7302083333333333,
+  "testTop3": 0.8520833333333333,
+  "testAccepted": 292,
+  "testAcceptedCorrect": 287,
+  "calibrationAccepted": 267,
+  "calibrationAcceptedCorrect": 259,
+  "scoreThreshold": 0.77,
+  "marginThreshold": 0.24,
   "strictGate": {
     "precisionFloor": 0.95,
     "scoreThreshold": 0.6900000000000004,
@@ -49,5 +49,74 @@
     "testAccepted": 640,
     "testAcceptedCorrect": 560
   },
-  "shippedGate": "strict (>=95% calibration precision)"
+  "shippedGate": "4-rotation agreement gate (highest calibration precision reachable with >=20 accepted: 97%)",
+  "singlePassTestTop1": 0.7239583333333334,
+  "agreeThreshold": 2,
+  "gateCurve": {
+    "0.95": {
+      "gate": {
+        "similarity": 0.69,
+        "margin": 0.13,
+        "agree": 2
+      },
+      "calibrationAccepted": 430,
+      "calibrationPrecision": 0.9511627906976744,
+      "testAccepted": 508,
+      "testCorrect": 468,
+      "testPrecision": 0.9212598425196851,
+      "testCoverage": 0.5291666666666667
+    },
+    "0.97": {
+      "gate": {
+        "similarity": 0.77,
+        "margin": 0.24,
+        "agree": 2
+      },
+      "calibrationAccepted": 267,
+      "calibrationPrecision": 0.9700374531835206,
+      "testAccepted": 292,
+      "testCorrect": 287,
+      "testPrecision": 0.9828767123287672,
+      "testCoverage": 0.30416666666666664
+    }
+  },
+  "planSimulation": {
+    "gate": {
+      "similarity": 0.77,
+      "margin": 0.24,
+      "agree": 2
+    },
+    "testPhotos": 960,
+    "rightPillConfirmed": 287,
+    "rightPillMislabeled": 5,
+    "rightPillNotSure": 668,
+    "wrongPillFalseMatch_randomPlan": 0,
+    "wrongPillFalseMatch_lookalikePlan": 5
+  },
+  "wrongPillCaughtRandomPlan": 1.0,
+  "wrongPillCaughtLookalikePlan": 0.9947916666666666,
+  "planCheck": {
+    "pairs": 359,
+    "lookalikeCap": 0.03,
+    "heldOut2Fold": {
+      "rightConfirmed": 0.6713,
+      "rightPrecision": 1.0,
+      "wrongCaught": 1.0,
+      "lookalikeCaught": 0.9638,
+      "confirmedWithoutFlip": 0.2396
+    },
+    "gate": {
+      "photo": {
+        "similarity": 0.88,
+        "ahead": 0.0,
+        "margin": 0.0
+      },
+      "flipped": {
+        "similarity": 0.7,
+        "ahead": 0.02,
+        "margin": 0.0
+      }
+    },
+    "note": "Plan-aware check: is this pill one of the plan's medicines? Photo first; unsure pills are flipped and both sides averaged. Held-out front/back pairs, 2-fold cross-validated by identity. Look-alike = the plan holds the product the model finds most similar to the pill. Small sample (359 pills); approximate."
+  }
 }

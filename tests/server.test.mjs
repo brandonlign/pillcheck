@@ -36,7 +36,6 @@ test("client modules and local fonts are served", async () => {
     "/fonts.css",
     "/fonts/font-1.ttf",
     "/icons.js",
-    "/img/pill.webp",
     "/sw.js",
   ]) {
     const r = await fetch(base + file);

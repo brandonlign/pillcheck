@@ -1,12 +1,17 @@
 // Offline support. The app shell is network-first (always fresh when online);
 // retained model assets, fonts and runtime are cache-first after first use.
-// The app no longer imports recognition.js, so it never starts the pill model.
-const SHELL = "pillcheck-shell-v11";
-const ASSETS = "pillcheck-assets-finetune-v2";
+const SHELL = "pillcheck-shell-v15";
+const ASSETS = "pillcheck-assets-finetune-v2-plan1";
 const shell = ["/", "/index.html", "/style.css", "/fonts.css", "/app.js", "/core.js", "/icons.js", "/recognition.js", "/recognition-core.js", "/icon.svg", "/manifest.webmanifest"];
+// Demo sample photos are small; precache them so the demo works offline.
+const samples = ["/examples/dose-two.jpg", "/examples/pill-4.jpg", "/examples/flip-front.jpg", "/examples/flip-back.jpg", "/examples/manifest.json"];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(shell)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    Promise.all([caches.open(SHELL).then((c) => c.addAll(shell)), caches.open(ASSETS).then((c) => c.addAll(samples))]).then(() =>
+      self.skipWaiting(),
+    ),
+  );
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(

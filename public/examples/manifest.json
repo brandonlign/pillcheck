@@ -42,5 +42,23 @@
     "score": 0.8624,
     "margin": 0.4659,
     "selected": "Correct, confidently accepted v2 test prediction chosen after evaluation for illustration (high margin, varied colours); not a random sample and not used to calculate metrics."
+  },
+  {
+    "id": null,
+    "ndc": "00093-7153",
+    "split": "held-out (test + calibration)",
+    "selected": "Front is a test photo the model is unsure about alone; back is the other side from the calibration split. Chosen after evaluation to illustrate the flip step; not a random sample.",
+    "file": "/examples/flip-front.jpg",
+    "sourceImage": "fcn_mix_weight/dc_224/705.jpg",
+    "side": "first photo"
+  },
+  {
+    "id": null,
+    "ndc": "00093-7153",
+    "split": "held-out (test + calibration)",
+    "selected": "Front is a test photo the model is unsure about alone; back is the other side from the calibration split. Chosen after evaluation to illustrate the flip step; not a random sample.",
+    "file": "/examples/flip-back.jpg",
+    "sourceImage": "fcn_mix_weight/dc_224/2749.jpg",
+    "side": "other side"
   }
 ]
