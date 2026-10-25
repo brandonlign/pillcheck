@@ -4,7 +4,7 @@ Use this page to fill in the submission form, plan the demo video, and prepare f
 
 ## One-line pitch
 
-**PillCheck lets families double-check every dose with one photo.** Our detection model finds each pill, reads its color, shape and imprint, and PillCheck checks the count and imprints against the prescription plan in about two seconds.
+**PillCheck helps families check a prepared dose against a saved medication plan.** It finds pill-shaped regions in a photo and compares them on-device with known pill references. It marks uncertain results instead of guessing.
 
 ## The problem
 
@@ -20,9 +20,9 @@ Explain the real moment that started the project: a family member, a pill organi
 
 ## What it does
 
-1. **Plan:** add each prescription (name, strength, schedule, and the imprint printed on the pill). Optional name lookup in NLM RxNorm.
+1. **Plan:** add each prescription (name, strength, schedule, quantity, and bottle NDC). Optional name lookup in NLM RxNorm.
 2. **Scan:** pick the dose time and take one photo of the pills on a plain surface. Live outlines show each pill in the camera preview.
-3. **Result:** a card lists every pill found with its color, shape and imprint, says whether the count matches the plan, and marks each pill whose imprint matches a saved medication.
+3. **Result:** a card shows detected pill crops, accepted reference matches or an uncertain result, and whether reference identities and counts match the saved plan.
 4. **Track:** log the dose, see the week and streak, print a report for a doctor or pharmacist, and review a weekly organizer one compartment at a time.
 
 ## How it works (technical summary for judges)
@@ -30,15 +30,15 @@ Explain the real moment that started the project: a family member, a pill organi
 | Part | What it is |
 |---|---|
 | Live outlines | In-browser background segmentation, morphology and connected components draw a box around each separate pill in the camera preview. |
-| Detection | The photo is resized in the browser and sent through the PillCheck server to our detection model, a hosted vision model prompted to return structured JSON (count, then color, shape, imprint and a possible name for each pill). |
-| Parsing | The server validates the image, rate-limits requests, and parses the model's JSON with a fallback that still recovers pills from malformed output. Tested in `tests/analysis.test.mjs`. |
-| Plan matching | Imprints are normalized and compared with each saved medication, allowing one misread character (for example "PAIN 5" vs "PAN 5"). The pill count is compared with the planned quantity. |
-| Storage | Plans and logs stay in the browser's local storage. No accounts, no analytics. Photos are not stored. |
-| App | Vanilla JavaScript, no framework; installable web app; Node.js server with the detection and RxNorm proxies. |
+| Reference comparison | A DINOv2 ViT-S/14 model runs in the browser through ONNX Runtime Web. It embeds each detected crop and ranks it against 11,783 reference photos covering 4,902 known pill identities. |
+| Abstention | A calibration-selected similarity and margin threshold suppresses low-separation matches. Similarity is not a probability, and accepted matches can still be wrong. |
+| Plan matching | Accepted reference NDCs and pill counts are compared with the NDCs and quantities saved for that dose. Scans that are uncertain or do not match cannot be logged as a matched dose; the user can still self-report manually. |
+| Storage | Plans and logs stay in browser local storage. Pill photos are analyzed on-device and are not uploaded. Optional medication lookup goes to NLM. No accounts or analytics. |
+| App | Vanilla JavaScript, no framework; installable web app; Node.js server for static files and the optional RxNorm proxy. |
 
-## Research history: the on-device model
+## Model and evaluation
 
-Before the current detection model, PillCheck ran its own pill recognizer in the browser. It is still in the repository (`vision/`, `public/models/`) and is a good story for judges about the machine-learning work.
+The current scanner uses the on-device reference model trained for PillCheck (`vision/`, `public/models/`):
 
 - DINOv2 ViT-S/14 vision transformer, fully fine-tuned on the ePillID benchmark (NIH Pillbox images) with pill-specific augmentation and a CosFace metric-learning loss.
 - 9,804 reference images covering 4,902 pill identities.
@@ -51,7 +51,7 @@ Before the current detection model, PillCheck ran its own pill recognizer in the
 | Confident answers (coverage) | 20.8% | **49.1%** |
 | Right when confident (precision) | 89.0% | **92.1%** |
 
-Why it was replaced: it only knew pills in the historical NIH library and needed already-cropped photos, while the detection model reads imprints on any pill in a full photo. These numbers describe the retained model, not the current detection model.
+The model only covers identities in the ePillID reference library, and its benchmark photos are already cropped. Its numbers measure reference retrieval, not pill segmentation or complete-dose accuracy. The current app has not been evaluated on an independent set of household photos or unknown pills. See [`MODEL_CARD.md`](MODEL_CARD.md) for the split, threshold selection, and limitations.
 
 ## Design process (good to mention to judges)
 
@@ -66,7 +66,7 @@ The interface was redesigned after studying the top-rated apps in the category o
 
 ## Privacy
 
-Plans and logs live in the browser's local storage. Photos are analyzed by our detection model and are not stored. The only other network request is the optional medication-name lookup to the National Library of Medicine.
+Plans and logs live in browser local storage. Pill photos are analyzed on-device and are not uploaded. The optional medication-name lookup sends the entered name or NDC to the National Library of Medicine.
 
 ## Demo video plan (keep within the official length limit)
 
@@ -83,10 +83,10 @@ Tips: record the screen at 1080p; use a phone on a stand for real photos; use a 
 
 ## Judging questions to rehearse
 
-- *How does the detection work?* The browser draws live outlines; the photo goes through the PillCheck server to our detection model, which returns structured JSON; PillCheck then matches imprints and counts against the plan.
-- *Did you build the model?* Be ready to explain both parts honestly: the detection model is a hosted vision model you prompt and parse, and you separately trained and evaluated the on-device DINOv2 recognizer (numbers above).
-- *What happens when it's wrong?* The count and the imprint matches make a wrong or missing pill stand out, and every dose is still confirmed by the user before it is logged.
-- *What would you add next?* Bottle barcode scanning, a measured accuracy study for the detection model on real doses, a native app, and caregiver sync.
+- *How does the scan work?* The browser draws live outlines, runs the DINOv2 reference model locally on each crop, abstains below its threshold, then compares accepted reference NDCs and counts with the saved plan.
+- *Did you build the model?* The DINOv2 backbone was fine-tuned on the ePillID benchmark with pill-specific augmentation and a CosFace loss. The strict threshold accepted 471 of 960 held-out crops, and 434 accepted matches were correct (92.1%). This is a research benchmark, not clinical validation.
+- *What happens when it's wrong?* A wrong accepted match remains possible. The app labels matches as research results, and users must compare against the bottle and confirm the dose themselves.
+- *What would you add next?* Test end-to-end detection and matching on diverse phone photos, improve unknown-pill rejection, add barcode lookup, and evaluate caregiver workflows.
 
 ## Submission checklist
 

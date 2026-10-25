@@ -31,6 +31,7 @@ test("client modules and local fonts are served", async () => {
   for (const file of [
     "/app.js",
     "/core.js",
+    "/recognition.js",
     "/style.css",
     "/fonts.css",
     "/fonts/font-1.ttf",
@@ -50,6 +51,14 @@ test("web app manifest is served with its media type", async () => {
 });
 test("unknown paths return 404", async () =>
   assert.equal((await fetch(base + "/not-real")).status, 404));
+test("pill photos are no longer sent to a server recognition endpoint", async () => {
+  const r = await fetch(base + "/api/recognize", {
+    method: "POST",
+    headers: { "content-type": "image/jpeg" },
+    body: Buffer.from([0xff, 0xd8, 0xff]),
+  });
+  assert.equal(r.status, 404);
+});
 test("encoded traversal cannot read package metadata", async () => {
   const r = await fetch(base + "/%2e%2e%2fpackage.json");
   assert.equal(r.status, 404);

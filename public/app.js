@@ -1,4 +1,9 @@
-import { detectPills, productNdc } from "./recognition-core.js";
+import {
+  detectPills,
+  evaluateScan,
+  productNdc,
+} from "./recognition-core.js";
+import { recognizePhoto } from "./recognition.js";
 import { lucide } from "./icons.js";
 import {
   SLOTS,
@@ -258,7 +263,7 @@ function welcome() {
   return `<main class="welcome" id="main"><div class="welcome-inner">
 <div class="welcome-hero"><img src="/icon.svg" alt=""><h1>${state.onboarded ? "How PillCheck works" : "Welcome to PillCheck"}</h1><p>A second pair of eyes for every dose.</p></div>
 <div class="card" style="display:grid;gap:22px;padding:22px">
-<div class="feature">${art("camera", 46)}<div><b>Scan a dose</b><p>Our detection model reads each pill’s color, shape and imprint.</p></div></div>
+<div class="feature">${art("camera", 46)}<div><b>Scan a dose</b><p>Our on-device reference model compares each pill with known appearances.</p></div></div>
 <div class="feature">${art("calendar", 46)}<div><b>Stay on schedule</b><p>See what’s due today and keep a streak going.</p></div></div>
 <div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help.</p></div></div>
 </div>
@@ -345,88 +350,60 @@ function medications() {
     `<div class="section list"><button class="row" data-page="organizer"><span class="ico-tile t-purple">${icon("grid-3x3")}</span><span class="grow row-title">Pill organizer</span><span class="chev">${icon("chevron-right")}</span></button></div>`
   );
 }
-// Map the detection model's free-text color and shape onto the app's pill icons.
-const pillLook = (f) => {
-  const c = (f.color || "").toLowerCase(),
-    s = (f.shape || "").toLowerCase();
-  return {
-    color: Object.keys(colors).find((k) => c.includes(k.toLowerCase())) || "White",
-    shape: /capsule/.test(s) ? "Capsule" : /oval|oblong|ellip/.test(s) ? "Oval" : "Round",
-  };
+const referenceFor = (pill) => pill?.candidates?.[0] || null;
+const referenceName = (reference) => {
+  const label = reference?.label;
+  if (!label) return reference?.ndc ? `NDC ${reference.ndc}` : "Unknown reference";
+  return [label.name, label.strength].filter(Boolean).join(" · ");
 };
-const imprintKey = (s) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-// Imprints are read from photos, so allow one misread character ("PAIN5" vs "PAN5").
-function closeImprint(a, b) {
-  a = imprintKey(a);
-  b = imprintKey(b);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  if (Math.min(a.length, b.length) < 3 || Math.abs(a.length - b.length) > 1) return false;
-  let i = 0,
-    j = 0,
-    edits = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) i++, j++;
-    else {
-      if (++edits > 1) return false;
-      if (a.length > b.length) i++;
-      else if (b.length > a.length) j++;
-      else i++, j++;
-    }
-  }
-  return edits + (a.length - i) + (b.length - j) <= 1;
-}
-const planMatch = (f, meds) => meds.find((m) => closeImprint(f.imprint, m.imprint));
-// A planned medication counts as seen when a found pill carries its saved imprint.
-const seenImprint = (m) => !!scan?.pills.some((f) => closeImprint(f.imprint, m.imprint));
-const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+const matchesMedication = (pill, medication) => {
+  const reference = referenceFor(pill);
+  return !!pill?.accepted && !!reference &&
+    productNdc(reference.ndc) === productNdc(medication.ndc || medication.pillId);
+};
+const seenReference = (medication) =>
+  !!scan?.pills.some((found) => matchesMedication(found, medication));
 function resultHtml(meds) {
   const found = scan.pills,
     expected = meds.reduce((n, m) => n + m.quantity, 0),
-    countOk = found.length > 0 && found.length === expected,
-    head = found.length
-      ? `${found.length} pill${found.length === 1 ? "" : "s"} found`
-      : "No pills found",
-    sub = !found.length
-      ? "Try again on a plain surface with better light."
-      : expected
-        ? countOk
-          ? `Matches the ${expected} planned for ${selectedSlot.toLowerCase()}`
-          : `${expected} planned for ${selectedSlot.toLowerCase()}`
-        : `Nothing is planned for ${selectedSlot.toLowerCase()}`;
+    evaluation = evaluateScan(patient(), selectedSlot, scan, { day: dayKey() }),
+    canLogFromScan = evaluation.type === "matched";
   const rows = found
-    .map((f) => {
-      const look = pillLook(f),
-        label = cap([f.color, f.shape].filter(Boolean).join(" ").toLowerCase()) || "Pill",
-        mine = planMatch(f, meds),
-        sub = mine
-          ? `<span class="row-sub match">${icon("check")}Matches ${esc(mine.name)} ${esc(mine.strength)}</span>`
-          : f.possible
-            ? `<span class="row-sub">Possibly ${esc(f.possible)}</span>`
-            : "";
-      return `<div class="row">${pill(look)}<span class="grow"><span class="row-title">${esc(label)}</span>${sub ? "<br>" + sub : ""}</span>${f.imprint ? `<span class="imprint">${esc(f.imprint)}</span>` : ""}</div>`;
+    .map((f, i) => {
+      const reference = referenceFor(f),
+        matched = meds.find((m) => matchesMedication(f, m)),
+        title = matched
+          ? `Matches ${matched.name} ${matched.strength}`
+          : f.accepted
+            ? referenceName(reference)
+            : "No confident reference match",
+        detail = matched
+          ? "Accepted reference matches the saved NDC."
+          : f.accepted
+            ? "Accepted reference is not in this dose’s plan. Check the bottle label."
+            : "The closest catalog result did not pass the match threshold.";
+      return `<div class="row scan-pill-row">${f.thumbnail ? `<img class="scan-pill-thumb" src="${esc(f.thumbnail)}" alt="Detected pill ${i + 1}">` : pill({ color: "White", shape: "Round" })}<span class="grow"><span class="row-title">Pill ${i + 1}: ${esc(title)}</span><br><span class="row-sub${matched ? " match" : ""}">${matched ? icon("check") : ""}${esc(detail)}</span></span></div>`;
     })
     .join("");
-  const logAction = !expected
+  const logAction = !expected || evaluation.type === "duplicate"
     ? ""
-    : countOk
-      ? button("Log as taken", "log-taken", "success block", "check")
+    : canLogFromScan
+      ? button("Log matched dose", "log-taken", "success block", "check")
       : button("Log manually", "log-manual", "success block", "check");
-  const resultNote = !expected
-    ? `Nothing is planned for ${selectedSlot.toLowerCase()}.`
-    : countOk
-      ? "Research prototype · compare with your pharmacy label."
-      : found.length
-        ? "The detected count does not match the plan. Retake or log manually if you took the dose."
-        : "No pills were detected, so this scan cannot be logged as taken. If you took the dose, you can record it manually.";
-  return `<div class="card found" role="status" id="check-result"><div class="found-head"><span class="found-ico ${countOk ? "good" : "warn"}">${icon(countOk ? "check" : found.length ? "triangle-alert" : "x")}</span><div><h2>${head}</h2><p>${esc(sub)}</p></div></div>${rows ? `<div class="list flat">${rows}</div>` : ""}${scan.note ? `<p class="found-note">${esc(scan.note)}</p>` : ""}</div>
+  const countSummary = `${found.length} pill${found.length === 1 ? "" : "s"} detected · ${expected} planned for ${selectedSlot.toLowerCase()}`;
+  const resultNote = canLogFromScan
+    ? "Reference matches are a research aid. Check the prescription label before taking medication."
+    : expected
+      ? `${evaluation.detail} ${found.length ? "Review the photo and bottle label; log manually only if you took the dose." : "If you took the dose, you can record it manually."}`
+      : evaluation.detail;
+  return `<div class="card found" role="status" id="check-result"><div class="found-head"><span class="found-ico ${canLogFromScan ? "good" : "warn"}">${icon(canLogFromScan ? "check" : found.length ? "triangle-alert" : "x")}</span><div><h2>${esc(evaluation.title)}</h2><p>${esc(countSummary)}</p></div></div>${rows ? `<div class="list flat">${rows}</div>` : ""}${scan.quality?.length ? `<p class="found-note">${esc(scan.quality.join(" "))}</p>` : ""}</div>
 <div class="actions-row">${logAction}<div class="btn-pair">${button("Retake", "retake", "block", "camera")}${button("Flag a problem", "log-concern", "block", "triangle-alert")}</div></div>
-<p class="research-note">${resultNote}</p>`;
+<p class="research-note">${esc(resultNote)}</p>`;
 }
 function checkPage() {
   const p = patient(),
     meds = dosesFor(p, selectedSlot),
-    planned = `<div class="section"><div class="section-head"><h2>Planned for ${selectedSlot.toLowerCase()}</h2></div><div class="list">${meds.map((m) => `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)}</span><br><span class="row-sub">${esc(m.strength)} · ${m.quantity} ${m.shape === "Capsule" ? "capsule" : "tablet"}${m.quantity > 1 ? "s" : ""}${m.imprint ? ` · ${esc(m.imprint)}` : ""}</span></span>${scan && seenImprint(m) ? `<span class="tag green">${icon("check")}Seen</span>` : ""}</button>`).join("") || `<div class="row plain"><span class="muted">Nothing planned.</span></div>`}</div></div>`;
+    planned = `<div class="section"><div class="section-head"><h2>Planned for ${selectedSlot.toLowerCase()}</h2></div><div class="list">${meds.map((m) => `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)}</span><br><span class="row-sub">${esc(m.strength)} · ${m.quantity} ${m.shape === "Capsule" ? "capsule" : "tablet"}${m.quantity > 1 ? "s" : ""}${m.imprint ? ` · ${esc(m.imprint)}` : ""}</span></span>${scan && seenReference(m) ? `<span class="tag green">${icon("check")}Seen</span>` : ""}</button>`).join("") || `<div class="row plain"><span class="muted">Nothing planned.</span></div>`}</div></div>`;
   const slotPicker = `<div class="segmented" role="group" aria-label="Which dose">${SLOTS.map((s) => `<button data-slot="${s}" aria-pressed="${s === selectedSlot}">${s}${isTaken(p, s) ? " ✓" : ""}</button>`).join("")}</div>`;
   const modeToggle = `<div class="segmented mode" role="group" aria-label="Photo type">${[
     ["dose", "Several pills"],
@@ -436,11 +413,11 @@ function checkPage() {
     .join("")}</div>`;
   let body;
   if (scan && !scanBusy)
-    body = `<div class="viewfinder shot"><img src="${esc(photoUrl)}" alt="Scanned photo"></div><div class="section">${resultHtml(meds)}</div>${planned}`;
+    body = `<div class="viewfinder shot"><img src="${esc(scan.annotated || photoUrl)}" alt="Scanned photo with detected pill regions"></div><div class="section">${resultHtml(meds)}</div>${planned}`;
   else if (cameraStream)
     body = `<div class="viewfinder camera-live"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture and scan">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div>${modeToggle}${planned}`;
   else if (scanBusy || photoUrl)
-    body = `<div class="viewfinder ${scanBusy ? "busy" : ""}">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being scanned">` : ""}<span class="corners"></span>${scanBusy ? `<span class="camera-status" role="status" aria-live="polite">Analyzing…</span>` : ""}</div>${scanBusy ? "" : `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(scanProgress || "Something went wrong")}</b></div></div><div class="actions-row">${button("Try again", "scan-photo", "primary block", "refresh-cw")}${button("Retake", "retake", "block", "camera")}</div>`}`;
+    body = `<div class="viewfinder ${scanBusy ? "busy" : ""}">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being scanned">` : ""}<span class="corners"></span>${scanBusy ? `<span class="camera-status" id="scan-progress" role="status" aria-live="polite">${esc(scanProgress || "Starting the on-device scan…")}</span>` : ""}</div>${scanBusy ? "" : `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(scanProgress || "Something went wrong")}</b></div></div><div class="actions-row">${button("Try again", "scan-photo", "primary block", "refresh-cw")}${button("Retake", "retake", "block", "camera")}</div>`}`;
   else
     body = `<div class="viewfinder" id="dropzone"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread pills on a plain surface"}</b><span>Imprints up, good light</span></span></div>
 ${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
@@ -614,59 +591,27 @@ async function captureLivePhoto() {
   cameraError = "";
   setPhoto(blob);
 }
-async function preparePhoto(file) {
-  const bitmap = await createImageBitmap(file, {
-    imageOrientation: "from-image",
-  });
-  try {
-    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height)),
-      canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.88),
-    );
-    if (!blob) throw Error("The photo could not be prepared. Try another image.");
-    return blob;
-  } finally {
-    bitmap.close();
-  }
-}
 async function analyzePhoto() {
   if (!photo || scanBusy) return;
   const version = ++scanVersion;
-  const started = performance.now();
   scanBusy = true;
   scan = null;
   scanProgress = "";
   render();
   try {
-    const upload = await preparePhoto(photo);
-    if (version !== scanVersion) return;
-    const response = await fetch("/api/recognize", {
-      method: "POST",
-      headers: {
-        "Content-Type": upload.type,
-        "X-PillCheck-Mode": scanMode,
+    scan = await recognizePhoto(photo, {
+      mode: scanMode,
+      progress: (message) => {
+        if (version !== scanVersion) return;
+        scanProgress = message;
+        const status = $("#scan-progress");
+        if (status) status.textContent = message;
       },
-      body: upload,
-      signal: AbortSignal.timeout(40_000),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok)
-      throw Error(payload.error || "Our detection model is unavailable. Try again.");
     if (version !== scanVersion) return;
-    scan = {
-      model: payload.model || "PillCheck detection model",
-      pills: Array.isArray(payload.pills) ? payload.pills : [],
-      note: payload.note || "",
-      elapsedMs: performance.now() - started,
-    };
   } catch (e) {
     if (version !== scanVersion) return;
-    scanProgress =
-      e.name === "TimeoutError" ? "Our detection model took too long. Try again." : e.message;
+    scanProgress = e.message || "The on-device scan could not finish. Try again.";
   } finally {
     if (version === scanVersion) {
       scanBusy = false;
@@ -767,13 +712,13 @@ function settings() {
       .map(([id, label]) => `<option value="${id}" ${state.language === id ? "selected" : ""}>${label}</option>`)
       .join("")}</select></label><button class="row" data-action="speak"><span class="ico-tile t-teal">${icon("volume-2")}</span><span class="grow row-title">Play a voice preview</span><span class="chev">${icon("chevron-right")}</span></button></div></div>
 <div class="section"><div class="section-head"><h2>Your data</h2></div><div class="list"><button class="row" data-action="export"><span class="ico-tile t-blue">${icon("download")}</span><span class="grow row-title">Export a backup</span><span class="chev">${icon("chevron-right")}</span></button><label class="row" for="import-file"><span class="ico-tile t-green">${icon("upload")}</span><span class="grow row-title">Restore from a backup</span><span class="chev">${icon("chevron-right")}</span></label><button class="row" data-action="reset"><span class="ico-tile t-red">${icon("trash-2")}</span><span class="grow row-title" style="color:var(--red)">Erase all data on this device</span></button></div><input id="import-file" type="file" accept="application/json,.json"></div>
-<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow row-title">How PillCheck works</span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Your data stays in this browser. Photos are analyzed by our detection model and not stored.</p></div>`
+<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow row-title">How PillCheck works</span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Your medication plan stays in this browser. Pill photos are analyzed on this device and aren’t uploaded.</p></div>`
   );
 }
 function about() {
   return (
     topbar("How it works", { back: "settings" }) +
-    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Snap the dose</b><p>Spread the pills out on a plain surface and take one photo.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Our detection model reads it</b><p>It finds each pill and reads its color, shape and imprint.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Compare with your plan</b><p>PillCheck counts the pills and flags imprints that match your saved medications.</p></div></div></div>
+    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Snap the dose</b><p>Spread the pills out on a plain surface with space between them.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Compare pill appearances</b><p>The on-device model compares each detected pill with a library of known references. It marks uncertain matches instead of guessing.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check against your plan</b><p>PillCheck compares accepted pill references and counts with the bottle NDCs and quantities you saved.</p></div></div></div>
 <p class="caption">Research prototype · not a medical device.</p>
 <p class="caption">Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT). This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p>`
   );
@@ -1034,9 +979,9 @@ function logDose(status, method = "scan") {
     return;
   }
   if (status === "taken" && method === "scan") {
-    const expected = dosesFor(p, selectedSlot).reduce((n, m) => n + m.quantity, 0);
-    if (!expected || !scan?.pills?.length || scan.pills.length !== expected) {
-      toast("The scan count does not match the plan. Retake or log manually.");
+    const evaluation = scan && evaluateScan(p, selectedSlot, scan, { day: dayKey() });
+    if (evaluation?.type !== "matched") {
+      toast("The scan did not match every planned pill. Review it or log manually.");
       return;
     }
   }

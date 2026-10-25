@@ -1,6 +1,6 @@
 # PillCheck
 
-**Double-check every dose with one photo.** Our detection model finds each pill and reads its color, shape and imprint, and PillCheck checks the count and imprints against your medication plan.
+**Double-check every dose with one photo.** PillCheck finds separate pills and compares their appearances with saved bottle references. It marks uncertain matches instead of guessing.
 
 Research prototype, not a medical device.
 
@@ -10,21 +10,20 @@ Node.js 22 or newer:
 
 ```sh
 npm ci
-echo "PILLCHECK_API_KEY=your_key_here" > .env
 npm start
 ```
 
-`npm start` and the launchers load `.env` automatically (it is gitignored). Never put the key in browser code or commit it. `PILLCHECK_MODEL` overrides the detection model. Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
+Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
 
 **Use a phone:** start the server with `HOST=0.0.0.0 npm start` and open `http://<this-computer's-IP>:4173` on the same Wi-Fi. Live camera access and PWA installation need HTTPS or `localhost`.
 
 ## How a scan works
 
 1. Open **Scan**, pick the dose time, and start the live camera or upload a photo. Live outlines are drawn in the browser.
-2. The photo is resized to a JPEG and sent through the PillCheck server to our detection model, which returns each pill's color, shape, imprint and a possible name as JSON (`analysis.mjs` parses it). A scan takes about two seconds.
-3. PillCheck compares the pill count with the plan and marks pills whose imprint matches a saved medication (one misread character allowed). Log the dose or flag a problem.
+2. The browser separates pill-shaped regions and compares each crop with the on-device reference model. Photos are not sent to a recognition service. The first scan downloads the model files; the service worker caches them for later use.
+3. PillCheck compares accepted reference matches and detected counts with the saved bottle NDCs and quantities. Low-confidence or unmatched results are marked uncertain. The model compares appearance; it does not read imprints.
 
-Photos are not stored. The retained on-device DINOv2 model in `public/models/` is kept for research history; its report in [`public/models/evaluation.json`](public/models/evaluation.json) does not measure the detection model.
+The shipped DINOv2 reference model was evaluated on 960 held-out ePillID photos: top-1 NDC retrieval was 72.4%, and 434 of 471 matches accepted by its strict threshold were correct (92.1%). These are cropped research photos, not an end-to-end evaluation on household dose scenes; see [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md).
 ## Interface
 
 The UI is modelled on the patterns shared by the best-rated apps in this space, studied from their App Store screens: **Medisafe** (4.7★, 102K ratings), **MyTherapy** (4.8★), Apple Health Medications, the Apple Design Award winner **Streaks** (4.8★), **Duolingo** (4.7★, 5.5M ratings) and top medication-app concepts on Dribbble.
@@ -40,7 +39,7 @@ The UI is modelled on the patterns shared by the best-rated apps in this space, 
 
 - Separate local care profiles; add/edit/delete medication plans and appearance notes.
 - Live RxNorm name/NDC lookup, with manual label entry if unavailable.
-- Per-pill scan results with count and imprint matching against the saved plan.
+- Per-pill scan results with count and reference-NDC matching against the saved plan.
 - Manual 7×1, 7×2, and 7×4 organizer review, preparation notes, and refill-change notes.
 - Local caregiver view, self-reported logging history/trends, correction of mistaken records, and printable weekly reports. Use the system print dialog's **Save as PDF**.
 - Larger text, keyboard controls, and browser read-aloud guidance in English, Spanish, and Mandarin; visual UI remains English.
@@ -50,11 +49,11 @@ Morning is 00:00–11:59, afternoon 12:00–16:59, evening 17:00–20:59, and be
 
 ## What is still not implemented
 
-Bottle barcode scanning; arbitrary organizer detection; a measured accuracy study for the detection model; validated look-alike sensitivity; remote caregiver accounts, sync, and alerts; native mobile packaging; clinical validation; and a conformal/clinical error guarantee. Phone hardware performance has not been formally measured.
+Bottle barcode scanning; arbitrary organizer detection; an end-to-end accuracy study on real dose photos; validated look-alike sensitivity; remote caregiver accounts, sync, and alerts; native mobile packaging; clinical validation; and a conformal/clinical error guarantee. Phone hardware performance has not been formally measured.
 
 ## Data and privacy
 
-Plans and logs are stored unencrypted in browser localStorage. Export backups carefully. Photos are analyzed by our detection model through the PillCheck server and are not stored. Medication lookup sends the entered name/NDC to NLM. PillCheck does not run analytics or tracking and has no remote patient database.
+Plans and logs are stored unencrypted in browser localStorage. Export backups carefully. Pill photos are analyzed on the device and are not uploaded or saved. Optional medication lookup sends the entered name/NDC to NLM. PillCheck does not run analytics or tracking and has no remote patient database.
 
 Logging is self-reported and does not prove swallowing. Historical schedule edits can change past chart denominators; dates before a newly added medication's start date are excluded. Use one active entry tab; localStorage is not a transactional multi-user database.
 
@@ -64,7 +63,7 @@ Logging is self-reported and does not prove swallowing. Historical schedule edit
 npm test
 ```
 
-GitHub Actions installs the pinned runtime dependency, runs the tests, and checks syntax. Tests cover detection, detection-model output parsing, reference ranking, NDC matching, unknown/extra/wrong pills, quality flags, dose gating, schedules, backups, and serving. They do not establish clinical accuracy.
+GitHub Actions installs the pinned runtime dependency, runs the tests, and checks syntax. Tests cover detection, reference ranking, NDC matching, unknown/extra/wrong pills, quality flags, dose gating, schedules, backups, and serving. They do not establish clinical accuracy.
 
 To reproduce model training, use Python 3.12, `vision/requirements-lock.txt`, the public ePillID release, the fixed split/seed, and the scripts described in [docs/MODEL_CARD.md](docs/MODEL_CARD.md). Python and dataset downloads are development-only.
 
@@ -78,8 +77,8 @@ public/icons.js            Lucide icon paths (generated by scripts/fetch_ui_asse
 public/img/                Fluent Emoji 3D illustrations (MIT)
 public/sw.js               Offline cache (app shell network-first, model cache-first)
 public/core.js             Schedule/record and legacy guided-review rules
-server.mjs                 Static server, detection model proxy, RxNorm proxy
-analysis.mjs               Parses the detection model's JSON into a pill list
+server.mjs                 Static server and RxNorm proxy
+analysis.mjs               Legacy detection-response parser tests
 vision/                    Training (train_finetune.py = v2), export checks, metadata scripts
 models/split.json          Exact image split used for training and evaluation
 tests/                     Logic, detector, inference, and server checks
