@@ -125,7 +125,6 @@ export function validateState(s) {
     !!s &&
     s.version === 1 &&
     Array.isArray(s.patients) &&
-    s.patients.length > 0 &&
     s.patients.length <= 30 &&
     new Set(s.patients.map((p) => p?.id)).size === s.patients.length &&
     s.patients.every(

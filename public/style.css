@@ -1221,12 +1221,9 @@ details.found[open] .chev {
   border-radius: 99px;
   background: var(--accent);
 }
-.demo-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 6px;
+.ai-output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- Stats (Streaks style) ---------- */

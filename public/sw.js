@@ -1,9 +1,9 @@
 // Offline support. The app shell is network-first (always fresh when online);
-// the model, references, fonts and runtime are cache-first after first use.
-// Bump ASSETS whenever public/models changes so phones fetch the new model.
-const SHELL = "pillcheck-shell-v5";
+// retained model assets, fonts and runtime are cache-first after first use.
+// The app no longer imports recognition.js, so it never starts the pill model.
+const SHELL = "pillcheck-shell-v6";
 const ASSETS = "pillcheck-assets-finetune-v2";
-const shell = ["/", "/index.html", "/style.css", "/fonts.css", "/app.js", "/core.js", "/icons.js", "/recognition.js", "/recognition-core.js", "/icon.svg", "/manifest.webmanifest"];
+const shell = ["/", "/index.html", "/style.css", "/fonts.css", "/app.js", "/core.js", "/icons.js", "/recognition-core.js", "/icon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(shell)).then(() => self.skipWaiting()));

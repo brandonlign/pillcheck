@@ -1,52 +1,38 @@
 # PillCheck
 
-**Double-check every dose with one photo.** A free, private medication double-check app for families and caregivers, with **on-device pill detection and recognition**. Built for the [Congressional App Challenge](https://www.congressionalappchallenge.us); see [docs/CONGRESSIONAL_APP_CHALLENGE.md](docs/CONGRESSIONAL_APP_CHALLENGE.md) for the pitch, demo-video plan and submission checklist.
+**Double-check every dose with a live camera.** PillCheck draws live object outlines in the browser and sends a compressed photo to NVIDIA’s GLM-5.3-Flash endpoint for a visual suggestion. The model does not verify pill identity against a prescription plan.
 
-**Recognition v2:** the pill encoder is now a fully fine-tuned DINOv2 vision transformer. On the same 960 held-out phone photos, the first guess is right **72.4%** of the time (v1: 53.1%), the right pill is in the top 3 **85.1%** of the time (v1: 76.3%), and the app answers confidently on **49.1%** of photos (v1: 20.8%) while staying right **92.1%** of the time when it does (v1: 89.0%).
-
-A photo is processed in the browser: the detector finds separated pills, a trained neural metric model compares each crop with 9,804 reference images across 4,902 research identities, and the app compares detected references/counts with a saved prescription plan. Weak or ambiguous matches return **not sure**. Users do not enter pill counts or tick appearance-match boxes in the photo flow.
-
-This is a research prototype, not a clinically validated medication identifier. Read the measured evaluation and limitations below before using it.
-
+This is a research prototype, not a clinically validated medication identifier. Treat every AI result as uncertain and check each pill against its pharmacy label or with a pharmacist.
 ## Run
 
 Node.js 22 or newer:
 
 ```sh
 npm ci
-npm start
+NVIDIA_API_KEY=your_key_here npm start
 ```
 
-Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Each installs the browser runtime if missing, starts the server and opens the app. Keep the window open; closing it (or Control-C) stops the app. Use `PORT=4180 npm start` for another port.
+Set `NVIDIA_API_KEY` in the server environment. Never put the key in browser code or commit it to the repository. Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
 
-**Demo on a phone:** start the server with `HOST=0.0.0.0 npm start` (Windows PowerShell: `$env:HOST="0.0.0.0"; npm start`), then open `http://<this-computer's-IP>:4173` on a phone on the same Wi-Fi. The camera button opens the phone camera. Installing to the home screen and offline mode need HTTPS or `localhost`.
+**Use a phone:** start the server with `HOST=0.0.0.0 npm start` and open `http://<this-computer's-IP>:4173` on the same Wi-Fi. Live camera access and PWA installation need HTTPS or `localhost`.
 
-The trained ONNX weights, embeddings, reference thumbnails, and offline names are included. **No API key, cloud inference account, Python installation, or training run is needed to use the app.** After installing the package, photo recognition needs no internet connection. Optional medication-name lookup uses RxNorm.
+## Scan a photo
 
-## Try automated recognition
+1. Open **Check a dose** and start the live camera, or choose **Upload**.
+2. Live outlines run locally. Capturing or selecting a photo resizes it and sends a JPEG to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log prompts and images; avoid including labels, faces, or personal documents.
+3. Review the visual suggestion, then compare every pill with its pharmacy label and saved plan. The model output is unverified and cannot authorize a dose. Confirm manually before logging.
 
-1. Open **Check a dose** (the camera button in the bottom tab bar on phones).
-2. Click **Try a real test photo** or **Try a two-pill scene**. This opens a separate, explicitly labeled sample plan, preserves personal profiles, loads a real held-out image or a synthetic composite of held-out images, and runs the actual model. No predictions are hardcoded. Example selection is documented in `public/examples/manifest.json`; examples are illustrative and are not a random evaluation sample.
-3. Inspect detection boxes, reference photographs, closest alternatives, similarity scores, and the plan comparison.
-4. Try your own photo. For several pills, separate them on a plain, contrasting mat with clear lighting. For one already-cropped pill image, select **One pill, close-up**.
-5. Add medications from your prescription and enter each exact bottle **NDC**. A medication name and strength alone do not establish a manufacturer-specific appearance. A candidate can be connected to a saved medication only after checking the NDC on the bottle.
+## What the scan actually does
 
-The model always searches the full reference gallery, rather than assuming every detected pill must be one of the expected medications. A dose can match only when every detected region passes the score/margin gate and its product NDC and count match the plan. Unknown objects, quality flags, unexpected pills, duplicate logs, and wrong time periods block confirmation. A matching result is still fallible and is not advice to take an unfamiliar pill.
+- **Live outlines:** browser-based background segmentation, morphology, and connected components. It can mistake other objects for pills or miss touching pills.
+- **Visual suggestion:** the server proxies the photo to NVIDIA’s `z-ai/glm-5.3-flash` chat endpoint. The model may describe appearance, transcribe a visible imprint, or suggest possibilities; there is no automatic identity-to-plan match.
+- **Limits:** GLM can misread an imprint or invent an identity. It is not a clinical pill identifier, chemical assay, counterfeit check, or proof of a current product’s appearance.
+- **Privacy:** the browser resizes photos and converts them to JPEG before upload. PillCheck does not persist the image. NVIDIA’s trial endpoint may log prompts and images for operation and improvement; review its [model privacy details](https://build.nvidia.com/z-ai/glm-5-3-flash/modelcard).
+- **Retained model:** the DINOv2 weights and evaluation report in `public/models/` remain for research history, but the app does not load or call that model.
 
-## What the recognizer actually does
+## Retained model evaluation
 
-- **Detection:** browser-based background segmentation, morphology, and connected components. It counts separated foreground regions; this is not a trained YOLO instance-segmentation model. Touching pills, hands, textured surfaces, shadows, or organizer dividers can break detection. The app flags some problematic regions but cannot detect every failure.
-- **Recognition:** DINOv2 ViT-S/14, fully fine-tuned on ePillID with layer-wise learning-rate decay, pill-specific augmentation (any-angle rotation, lighting, blur, noise; no mirror flips) and a CosFace margin loss, ending in a 256-dimensional normalized embedding. Each embedding is compared with both sides of every reference pill (averaged over four rotations) and with training-split phone photos. The model ID and measurements are in `public/models/evaluation.json`; training is `vision/train_finetune.py`.
-- **Identity:** a possible match to a historical research product NDC, with an offline public name where available. The 4,902 dataset identities represent 4,826 distinct normalized labeler/product NDCs. Package variants of the same product are merged for plan comparison. A catalog match is not a chemical assay, counterfeit check, or proof of the current product's appearance.
-- **Abstention:** a similarity and runner-up-margin gate selected on held-out calibration data. Scores are not probabilities. This is **not conformal prediction**, a 99% guarantee, or proof of safety on arbitrary photos.
-- **Privacy:** ONNX Runtime Web runs locally. Images, crops, and inference are not uploaded to the server or a third-party AI service. Offline metadata avoids sending inferred medication identities to external services.
-
-## Measured performance
-
-The committed report in [`public/models/evaluation.json`](public/models/evaluation.json) contains actual measurements: 11,783 training images, 789 calibration images, and 960 held-out consumer test images. It reports overall top-1/top-3 retrieval and the number/correctness of accepted predictions. The split is **image-held-out, not pill-identity-held-out**; it does not establish recognition of unseen types. Test photos are already cropped, whereas dose photos also depend on the separate detector. Known-pill benchmark accuracy does not measure open-world rejection or end-to-end medication safety.
-
-The similarity gate is selected on calibration images only; the test set is not used to select thresholds. Correct accepted test images are then chosen for the illustrative examples, so those examples must not be presented as a representative accuracy study. See [docs/MODEL_CARD.md](docs/MODEL_CARD.md).
-
+The report in [`public/models/evaluation.json`](public/models/evaluation.json) measures the bundled DINOv2 model only. Those figures do not measure GLM-5.3-Flash and are not current app accuracy.
 ## Interface
 
 The UI is modelled on the patterns shared by the best-rated apps in this space, studied from their App Store screens: **Medisafe** (4.7★, 102K ratings), **MyTherapy** (4.8★), Apple Health Medications, the Apple Design Award winner **Streaks** (4.8★), **Duolingo** (4.7★, 5.5M ratings) and top medication-app concepts on Dribbble.
@@ -62,7 +48,7 @@ The UI is modelled on the patterns shared by the best-rated apps in this space, 
 
 - Separate local care profiles; add/edit/delete medication plans and appearance notes.
 - Live RxNorm name/NDC lookup, with manual label entry if unavailable.
-- Duplicate-period logging protection; time-period, count, uncertainty, and unexpected-reference outcomes.
+- Dose logging requires a manual confirmation against the pharmacy label and saved plan.
 - Manual 7×1, 7×2, and 7×4 organizer review, preparation notes, and refill-change notes.
 - Local caregiver view, self-reported logging history/trends, correction of mistaken records, and printable weekly reports. Use the system print dialog's **Save as PDF**.
 - Larger text, keyboard controls, and browser read-aloud guidance in English, Spanish, and Mandarin; visual UI remains English.
@@ -76,7 +62,7 @@ Bottle OCR/barcode scanning; automated imprint OCR; arbitrary organizer detectio
 
 ## Data and privacy
 
-Plans and logs are stored unencrypted in browser localStorage. Someone using the same browser profile can read them, and storage can be cleared. Export backups carefully. Photos stay in tab memory and are discarded when leaving the check or closing the tab. Logs contain lightweight prediction evidence, not photographs. User-triggered medication search sends the entered name/NDC to NLM; browser speech may process spoken text externally. There is no analytics service or remote patient database.
+Plans and logs are stored unencrypted in browser localStorage. Someone using the same browser profile can read them, and storage can be cleared. Export backups carefully. Each selected photo is resized in the browser and sent through the PillCheck server to NVIDIA GLM-5.3-Flash. PillCheck does not persist photos, but NVIDIA’s trial endpoint may log inputs and outputs. User-triggered medication search sends the entered name/NDC to NLM; browser speech may process spoken text externally. There is no analytics service or remote patient database.
 
 Logging is self-reported and does not prove swallowing. Historical schedule edits can change past chart denominators; dates before a newly added medication's start date are excluded. Use one active entry tab; localStorage is not a transactional multi-user database.
 
@@ -91,8 +77,8 @@ GitHub Actions installs the pinned runtime dependency, runs the tests, and check
 To reproduce model training, use Python 3.12, `vision/requirements-lock.txt`, the public ePillID release, the fixed split/seed, and the scripts described in [docs/MODEL_CARD.md](docs/MODEL_CARD.md). Python and dataset downloads are development-only.
 
 ```text
-public/recognition.js       Browser ONNX inference, crops, annotated results
-public/recognition-core.js  Detector, ranking, product-NDC and dose rules
+public/recognition.js       Retained browser ONNX inference (inactive in app)
+public/recognition-core.js  Live detector and retained model helpers
 public/models/             Trained weights, gallery, references, measured report
 public/examples/           Real held-out photos and synthetic scene provenance
 public/app.js              App UI and local care workflows
@@ -100,7 +86,7 @@ public/icons.js            Lucide icon paths (generated by scripts/fetch_ui_asse
 public/img/                Fluent Emoji 3D illustrations (MIT)
 public/sw.js               Offline cache (app shell network-first, model cache-first)
 public/core.js             Schedule/record and legacy guided-review rules
-server.mjs                 Local static server, runtime assets, RxNorm proxy
+server.mjs                 Static server, NVIDIA image proxy, RxNorm proxy
 vision/                    Training (train_finetune.py = v2), export checks, metadata scripts
 models/split.json          Exact image split used for training and evaluation
 tests/                     Logic, detector, inference, and server checks

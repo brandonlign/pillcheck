@@ -1,12 +1,10 @@
-import { recognizePhoto, getCatalog, referenceStyle } from "./recognition.js";
-import { detectPills, evaluateScan, productNdc } from "./recognition-core.js";
+import { detectPills, productNdc } from "./recognition-core.js";
 import { lucide } from "./icons.js";
 import {
   SLOTS,
   dayKey,
   dosesFor,
   isTaken,
-  checkDose,
   blindSpots,
   currentSlot,
   adherence,
@@ -68,79 +66,35 @@ const uid = () =>
   [...crypto.getRandomValues(new Uint8Array(16))]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-function demoState() {
-  const meds = [
-    {
-      id: "demo-l",
-      name: "Lisinopril",
-      strength: "10 mg",
-      quantity: 1,
-      slots: ["Morning"],
-      color: "Pink",
-      shape: "Round",
-      imprint: "Example",
-      manufacturer: "Example manufacturer",
-      rx: null,
-    },
-    {
-      id: "demo-m",
-      name: "Metformin",
-      strength: "500 mg",
-      quantity: 1,
-      slots: ["Morning", "Evening"],
-      color: "White",
-      shape: "Oval",
-      imprint: "Example",
-      manufacturer: "Example manufacturer",
-      rx: null,
-    },
-    {
-      id: "demo-a",
-      name: "Atorvastatin",
-      strength: "20 mg",
-      quantity: 1,
-      slots: ["Evening"],
-      color: "White",
-      shape: "Oval",
-      imprint: "Example",
-      manufacturer: "Example manufacturer",
-      rx: null,
-    },
-  ];
-  const logs = [];
-  for (let i = 6; i >= 1; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    for (const slot of ["Morning", "Evening"])
-      if (!(i === 3 && slot === "Evening"))
-        logs.push({
-          id: uid(),
-          day: dayKey(d),
-          slot,
-          status: "taken",
-          at: d.toISOString(),
-          note: "Illustrative demo record",
-        });
-  }
+function emptyState() {
   return {
     version: 1,
-    demo: true,
-    active: "demo",
+    onboarded: false,
+    active: null,
     large: false,
     language: "en-US",
-    patients: [
-      { id: "demo", name: "Eleanor", meds, logs, refills: [], organizer: {} },
-    ],
+    patients: [],
   };
+}
+function removeSampleProfiles(s) {
+  if (!Array.isArray(s?.patients)) return s;
+  s.patients = s.patients.filter(
+    (p) => !["demo", "demo-vision"].includes(p?.id),
+  );
+  delete s.demo;
+  if (!s.patients.some((p) => p.id === s.active))
+    s.active = s.patients[0]?.id || null;
+  if (!s.patients.length) s.onboarded = false;
+  return s;
 }
 let state;
 try {
-  state = JSON.parse(localStorage.getItem("pillcheck-v1"));
-  if (!validateState(state)) state = demoState();
+  const saved = JSON.parse(localStorage.getItem("pillcheck-v1"));
+  state = validateState(saved) ? removeSampleProfiles(saved) : emptyState();
 } catch {
-  state = demoState();
+  state = emptyState();
 }
-let page = state.onboarded ? "today" : "welcome",
+let page = state.patients.length && state.onboarded ? "today" : "welcome",
   lastPage = null,
   viewDay = dayKey(),
   selectedSlot = currentSlot(),
@@ -158,23 +112,12 @@ let scan = null,
   scanBusy = false,
   scanProgress = "",
   scanMode = "dose",
-  scanVersion = 0,
-  scanLabels = {},
-  visionEvaluation = null;
+  scanVersion = 0;
 let cameraStream = null,
   cameraRequest = 0,
   cameraFrameToken = 0,
   cameraFrameId = 0,
-  cameraError = "",
-  exampleError = "",
-  exampleBusy = false;
-fetch("/models/evaluation.json")
-  .then((r) => (r.ok ? r.json() : null))
-  .then((v) => {
-    visionEvaluation = v;
-    if (v && ["welcome", "check"].includes(page)) render();
-  })
-  .catch(() => {});
+  cameraError = "";
 function save() {
   try {
     localStorage.setItem("pillcheck-v1", JSON.stringify(state));
@@ -208,13 +151,10 @@ function stopCamera() {
 function resetCheck() {
   stopCamera();
   cameraError = "";
-  exampleError = "";
-  exampleBusy = false;
   scanVersion++;
   scan = null;
   scanBusy = false;
   scanProgress = "";
-  scanLabels = {};
   if (viewOrgPhoto) {
     URL.revokeObjectURL(viewOrgPhoto);
     viewOrgPhoto = null;
@@ -319,7 +259,7 @@ ${NAV.filter(([id]) => id !== "check")
   })
   .join("")}
 <button class="side-link ${page === "organizer" ? "active" : ""}" data-page="organizer">${icon("grid-3x3")}Pill organizer</button>
-<div class="side-foot"><button class="profile-chip" data-action="profiles"><span class="avatar sm">${initials(p.name)}</span><span class="grow"><b>${esc(p.name)}</b><small>${state.demo ? "Sample data" : `${p.meds.length} medication${p.meds.length === 1 ? "" : "s"}`} · Switch</small></span></button></div></nav>
+<div class="side-foot"><button class="profile-chip" data-action="profiles"><span class="avatar sm">${initials(p.name)}</span><span class="grow"><b>${esc(p.name)}</b><small>${p.meds.length} medication${p.meds.length === 1 ? "" : "s"} · Switch</small></span></button></div></nav>
 <div class="main"><main id="main" class="page" tabindex="-1" style="${entering ? "" : "animation:none"}">${storageError ? `<div class="notice orange" style="margin-top:12px">${art("warning", 32)}<div><b>Changes aren’t being saved</b><p>Export a backup in Settings.</p></div></div>` : ""}${body}
 <p class="footer">PillCheck double-checks doses; it is not medical advice. Always follow your prescription and ask a pharmacist when unsure.</p></main></div></div>
 <nav class="tabbar" aria-label="Main navigation">${NAV.map(([id, ic, label]) => `<button class="${current === id ? "active" : ""} ${id === "check" ? "scan-tab" : ""}" data-page="${id}" ${current === id ? 'aria-current="page"' : ""}>${icon(ic)}<span>${label}</span></button>`).join("")}</nav>`;
@@ -330,12 +270,12 @@ function welcome() {
   return `<main class="welcome" id="main"><div class="welcome-inner">
 <div class="welcome-hero"><img src="/icon.svg" alt=""><h1>${state.onboarded ? "How PillCheck works" : "Welcome to PillCheck"}</h1><p>A second pair of eyes for every dose.</p></div>
 <div class="card" style="display:grid;gap:22px;padding:22px">
-<div class="feature">${art("camera", 46)}<div><b>Check a dose with the live camera</b><p>See pill outlines update in the camera preview, then capture a frame to compare each pill with the reference library.</p></div></div>
+<div class="feature">${art("camera", 46)}<div><b>Check a dose with the live camera</b><p>See object outlines update in the camera preview, then capture a frame for a GLM-5.3-Flash visual suggestion.</p></div></div>
 <div class="feature">${art("question", 46)}<div><b>Says “not sure” instead of guessing</b><p>Look-alike or unclear pills are flagged, so you know to check the bottle or ask a pharmacist.</p></div></div>
 <div class="feature">${art("heart", 46)}<div><b>Made for caregivers</b><p>Track doses for everyone you help, with large text and read-aloud.</p></div></div>
-<div class="feature">${art("lock", 46)}<div><b>Private by design</b><p>Photos never leave your device. No account, no ads, works offline.</p></div></div>
+<div class="feature">${art("lock", 46)}<div><b>Know where photos go</b><p>When you analyze a photo, it is sent to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log prompts and images. PillCheck does not save the photo.</p></div></div>
 </div>
-<div class="welcome-actions">${state.onboarded ? button("Back to the app", "enter-demo", "primary block") : button("Get started", "new-profile", "primary block") + button("Explore with sample data", "enter-demo", "block")}</div>
+<div class="welcome-actions">${state.onboarded ? button("Back to the app", "back-to-app", "primary block") : button("Get started", "new-profile", "primary block")}</div>
 <p class="fine">Research prototype for the Congressional App Challenge. Not a medical device.</p>
 </div></main>`;
 }
@@ -381,9 +321,6 @@ function today() {
       sub: viewDate.toLocaleDateString("en-US", { weekday: isToday ? "long" : undefined, month: "long", day: "numeric" }),
       actions: `<button class="round-btn" data-action="add-med" aria-label="Add medication" title="Add medication">${icon("plus")}</button>${avatarBtn()}`,
     }) +
-    (state.demo
-      ? `<div class="notice blue" style="margin-bottom:14px">${art("party", 32)}<div class="grow"><b>You’re exploring sample data</b><p>${p.id === "demo-vision" ? "The pill photos are real research images; this plan is made up." : "Everything here is made up, so tap around freely."} <button class="link" data-action="new-profile" style="min-height:0">Set up my own →</button></p></div></div>`
-      : "") +
     weekStrip +
     `<div class="section" style="margin-top:14px">${summary}</div>` +
     groups +
@@ -414,9 +351,9 @@ function medications() {
       ? `<div class="section"><div class="list">${matches
           .map(
             (m) =>
-              `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)} <span class="muted" style="font-weight:500">${esc(m.strength)}</span></span><br><span class="row-sub">${m.quantity} × ${m.slots.join(", ")}</span><br>${m.ndc ? `<span class="tag green">${icon("check")}Photo-ready</span>` : `<span class="tag orange">Add bottle NDC</span>`}</span><span class="chev">${icon("chevron-right")}</span></button>`,
+              `<button class="row" data-edit="${esc(m.id)}">${pill(m)}<span class="grow"><span class="row-title">${esc(m.name)} <span class="muted" style="font-weight:500">${esc(m.strength)}</span></span><br><span class="row-sub">${m.quantity} × ${m.slots.join(", ")}</span><br>${m.ndc ? `<span class="tag green">${icon("check")}NDC saved</span>` : `<span class="tag orange">Add bottle NDC</span>`}</span><span class="chev">${icon("chevron-right")}</span></button>`,
           )
-          .join("") || '<div class="row plain"><span class="muted">No matches</span></div>'}</div><p class="caption">Tap a medication to edit it or report a refill that looks different. The NDC on the bottle lets photo checks recognize each pill.</p></div>`
+          .join("") || '<div class="row plain"><span class="muted">No matches</span></div>'}</div><p class="caption">Tap a medication to edit it or report a refill that looks different. The NDC records the exact product from the bottle; AI photo suggestions do not verify it.</p></div>`
       : `<div class="section card" style="text-align:center;display:grid;justify-items:center;gap:10px;padding:30px 20px">${art("pill", 76)}<h2 style="font-size:1.3rem">No medications yet</h2><p class="muted">Copy the exact name, strength and schedule from each prescription label.</p>${button("Add medication", "add-med", "primary block", "plus")}</div>`) +
     `<div class="section"><div class="section-head"><h2>Tools</h2></div><div class="list"><button class="row" data-page="organizer"><span class="ico-tile t-purple">${icon("grid-3x3")}</span><span class="grow row-title">Pill organizer</span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow row-title">How recognition works</span><span class="chev">${icon("chevron-right")}</span></button></div></div>`
   );
@@ -431,6 +368,8 @@ const RESULT_KIND = {
   duplicate: ["warn", "warning"],
 };
 function resultHtml() {
+  if (scan?.model === "z-ai/glm-5.3-flash")
+    return `<div class="result warn" role="status" id="check-result">${art("warning", 84)}<h2>Visual suggestion · verify the label</h2><p>GLM-5.3-Flash cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.</p><label class="checks section-gap"><input id="manual-dose-confirm" type="checkbox"> I checked each pill against the pharmacy label and today’s plan</label><div class="actions"><button class="btn success block" data-action="log-taken" id="manual-log" disabled>I took this verified dose</button>${button("Save a concern", "log-concern", "block", "triangle-alert")}${button("Retake photo", "retake", "block", "camera")}</div></div>`;
   const [kind, pic] = RESULT_KIND[result.type] || ["warn", "warning"];
   const primary =
     result.type === "matched"
@@ -442,39 +381,26 @@ function resultHtml() {
           : button("Save a concern", "log-concern", "primary block", "triangle-alert");
   return `<div class="result ${kind}" role="status" id="check-result">${art(pic, 84)}<h2>${esc(result.title)}</h2><p>${esc(result.detail)}</p><div class="actions">${primary}${button("Retake photo", "retake", "block", "camera")}</div></div>`;
 }
-function foundList() {
-  return `<div class="list">${scan.pills
-    .map(
-      (p, i) => {
-        const top = p.candidates[0];
-        return `<details class="found"><summary class="row"><img class="found-thumb" src="${esc(p.thumbnail)}" alt="Pill ${i + 1} as photographed"><span class="grow"><span class="row-title" title="${top ? esc(top.label ? top.label.name : "") : ""}">${top ? esc(top.label ? short(top.label.name) : "NDC " + top.ndc) : "Unknown"}</span><br><span class="row-sub">Pill ${i + 1} · ${p.accepted ? "confident match" : "not sure"}</span></span><span class="tag ${p.accepted ? "green" : "orange"}">${p.accepted ? icon("check") + "Match" : "Not sure"}</span><span class="chev">${icon("chevron-right")}</span></summary>${p.candidates
-          .map(
-            (c, j) =>
-              `<div class="alt"><span class="ref-tile" style="${referenceStyle(c.catalogIndex)}" role="img" aria-label="NIH reference photo, front and back"></span><span class="grow"><span class="row-title small" title="${esc(c.label ? c.label.name : "")}">${esc(c.label ? short(c.label.name, 44) : "NDC " + c.ndc)}</span><br><span class="row-sub small">${j === 0 ? "Closest" : "Also similar"} · similarity ${c.score.toFixed(2)}</span><span class="meter" aria-hidden="true"><i style="width:${Math.max(4, Math.min(100, ((c.score - 0.2) / 0.8) * 100)).toFixed(0)}%"></i></span><button class="link" data-connect-pill="${esc(c.id)}">This is my bottle</button></span></div>`,
-          )
-          .join("")}</details>`;
-      },
-    )
-    .join("")}</div><p class="caption">${scan.pills.length} pill${scan.pills.length === 1 ? "" : "s"} found in ${(scan.elapsedMs / 1000).toFixed(1)} s on this device. Similarity is not the chance of being right. Tap a pill to compare it with reference photos.</p>`;
-}
 function scanSteps() {
-  const stage = /Comparing/.test(scanProgress)
-      ? 2
-      : /Finding/.test(scanProgress)
-        ? 1
-        : 0,
-    refs = visionEvaluation?.galleryRows || 11783;
+  const stage = /Waiting/.test(scanProgress) ? 2 : /Sending/.test(scanProgress) ? 1 : 0;
   return `<div class="card steps" role="status" aria-live="polite">${[
-    "Loading the recognition model",
-    "Finding each pill",
-    `Comparing with ${refs.toLocaleString()} reference photos`,
-    "Checking your plan",
+    "Preparing a resized photo",
+    "Sending the photo to NVIDIA",
+    "Analyzing with GLM-5.3-Flash",
   ]
     .map(
       (s, i) =>
         `<div class="step ${i < stage ? "done" : i === stage ? "now" : ""}"><span class="dot">${i < stage ? icon("check") : ""}</span>${s}</div>`,
     )
     .join("")}<p class="caption" style="margin:4px 16px 12px">${esc(scanProgress || "Preparing the photo…")}</p></div>`;
+}
+function visualSuggestionResult() {
+  return {
+    type: "uncertain",
+    title: "Visual suggestion · verify the label",
+    detail:
+      "GLM-5.3-Flash cannot confirm pill identity. Compare each pill with its pharmacy label and your plan. Ask a pharmacist if anything is unclear.",
+  };
 }
 function checkPage() {
   const p = patient(),
@@ -483,17 +409,17 @@ function checkPage() {
   const slotPicker = `<div class="segmented" role="group" aria-label="Which dose">${SLOTS.map((s) => `<button data-slot="${s}" aria-pressed="${s === selectedSlot}">${s}${isTaken(p, s) ? " ✓" : ""}</button>`).join("")}</div>`;
   let body;
   if (scan && result && !scanBusy)
-    body = `<div class="viewfinder" style="aspect-ratio:auto;min-height:200px;margin-top:14px"><img src="${esc(scan.annotated)}" alt="Your photo with a box around each pill" style="position:static;max-height:300px"></div><div class="section">${resultHtml()}</div>${scan.quality.length ? `<div class="section notice orange">${art("warning", 32)}<div><b>Photo tips</b><p>${scan.quality.map(esc).join(" ")}</p></div></div>` : ""}<div class="section"><div class="section-head"><h2>What we found</h2><button class="link" data-page="about">How accurate?</button></div>${foundList()}</div>${planned}`;
+    body = `<div class="viewfinder" style="aspect-ratio:auto;min-height:200px;margin-top:14px"><img src="${esc(photoUrl)}" alt="Photo submitted for visual analysis" style="position:static;max-height:300px"></div><div class="section">${resultHtml()}</div><div class="section card"><h2>GLM-5.3-Flash visual suggestion</h2><p class="ai-output">${esc(scan.analysis)}</p><p class="caption">This is an unverified AI suggestion, not a pill identification or medication recommendation.</p></div>${planned}`;
   else if (cameraStream)
-    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only; they do not identify medicine. Capture a frame to compare with the on-device reference library.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
-  else if (exampleBusy || scanBusy || photoUrl)
-    body = `<div class="viewfinder ${scanBusy || exampleBusy ? "busy" : ""}" style="margin-top:14px">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being checked">` : ""}<span class="corners"></span></div><div class="section">${scanBusy || exampleBusy ? scanSteps() : `<div class="notice">${art("warning", 32)}<div><b>${esc(scanProgress || "Ready")}</b></div></div>`}</div>`;
+    body = `<div class="viewfinder camera-live" style="margin-top:14px"><video id="camera-video" autoplay playsinline muted aria-label="Live camera preview"></video><canvas id="camera-overlay" aria-hidden="true"></canvas><span class="camera-status" id="camera-status" role="status" aria-live="polite">Starting camera…</span><span class="corners"></span></div><div class="section"><p class="caption">Live outlines mark separate objects only. Capture sends this photo to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log images. Avoid labels, faces, or documents; the model cannot confirm pill identity.</p><div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="capture-live" aria-label="Capture frame and check pills">${icon("camera")}</button><button class="side-action" data-action="stop-camera"><span class="ico">${icon("x")}</span>Stop</button></div><button class="link camera-mode" data-mode="${scanMode === "dose" ? "single" : "dose"}">${scanMode === "dose" ? "Switch to one pill" : "Switch to several pills"}</button></div>${planned}`;
+  else if (scanBusy || photoUrl)
+    body = `<div class="viewfinder ${scanBusy ? "busy" : ""}" style="margin-top:14px">${photoUrl ? `<img src="${esc(photoUrl)}" alt="Photo being checked">` : ""}<span class="corners"></span></div><div class="section">${scanBusy ? scanSteps() : `<div class="notice">${art("warning", 32)}<div><b>${esc(scanProgress || "Ready")}</b></div></div>`}</div>`;
   else
     body = `<div class="viewfinder" id="dropzone" style="margin-top:14px"><span class="corners"></span><span class="hint">${icon("camera")}<b>${scanMode === "single" ? "Fill the frame with one pill" : "Spread the pills on a plain surface"}</b><span>Keep them apart with imprints up, in good light. Start the live camera or upload a photo.</span></span></div>
 ${cameraError ? `<div class="section notice orange">${art("warning", 32)}<div><b>${esc(cameraError)}</b><br><label class="link" for="dose-photo">Use the device camera instead</label></div></div>` : ""}
-${exampleError ? `<div class="section notice orange" role="alert">${art("warning", 32)}<div><b>Test photo could not be loaded</b><p>${esc(exampleError)}</p></div></div>` : ""}
 <div class="shutter-row"><label class="side-action" for="dose-library"><span class="ico">${icon("image-up")}</span>Upload</label><button class="shutter" data-action="start-camera" aria-label="Start live camera">${icon("camera")}</button><button class="side-action" data-mode="${scanMode === "dose" ? "single" : "dose"}" aria-label="Switch to ${scanMode === "dose" ? "one-pill close-up" : "several pills"}"><span class="ico">${icon(scanMode === "dose" ? "pill" : "grid-3x3")}</span>${scanMode === "dose" ? "Several pills" : "One pill"}</button></div>
-<div class="section card" style="text-align:center"><b>No pills handy?</b><p class="muted small">Try it on real held-out research photos.</p><div class="demo-row"><button class="btn sm" data-action="example-single">${icon("pill")}Test photo</button><button class="btn sm" data-action="example-dose">${icon("sparkles")}Two-pill scene</button></div></div>${planned}`;
+<p class="caption">Analyzing a photo sends it to NVIDIA GLM-5.3-Flash. NVIDIA’s trial service may log prompts and images. Avoid including labels, faces, or personal documents.</p>
+${planned}`;
   return (
     topbar("Scan a dose", {
       sub: esc(p.name),
@@ -518,8 +444,6 @@ function cameraErrorText(error) {
 async function startCamera() {
   stopCamera();
   cameraError = "";
-  exampleError = "";
-  exampleBusy = false;
   scanVersion++;
   scanBusy = false;
   scan = null;
@@ -666,30 +590,59 @@ async function captureLivePhoto() {
   cameraError = "";
   setPhoto(blob);
 }
+async function preparePhoto(file) {
+  const bitmap = await createImageBitmap(file, {
+    imageOrientation: "from-image",
+  });
+  try {
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height)),
+      canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.88),
+    );
+    if (!blob) throw Error("The photo could not be prepared. Try another image.");
+    return blob;
+  } finally {
+    bitmap.close();
+  }
+}
 async function analyzePhoto() {
   if (!photo || scanBusy) return;
   const version = ++scanVersion;
+  const started = performance.now();
   scanBusy = true;
   scan = null;
   result = null;
-  scanProgress = "Loading";
+  scanProgress = "Preparing photo…";
   render();
   try {
-    const output = await recognizePhoto(photo, {
-      mode: scanMode,
-      progress: (message) => {
-        if (version !== scanVersion) return;
-        const changed = message.split(" ")[0] !== scanProgress.split(" ")[0];
-        scanProgress = message;
-        if (page === "check" && changed) render();
-      },
-    });
+    const upload = await preparePhoto(photo);
     if (version !== scanVersion) return;
-    scan = output;
-    result = evaluateScan(patient(), selectedSlot, scan, {
-      day: dayKey(),
-      currentSlot: currentSlot(),
+    scanProgress = "Sending photo to NVIDIA…";
+    if (page === "check") render();
+    const response = await fetch("/api/recognize", {
+      method: "POST",
+      headers: {
+        "Content-Type": upload.type,
+        "X-PillCheck-Mode": scanMode,
+      },
+      body: upload,
+      signal: AbortSignal.timeout(100_000),
     });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw Error(payload.error || "NVIDIA image analysis is unavailable. Try again.");
+    if (version !== scanVersion) return;
+    scan = {
+      model: payload.model || "z-ai/glm-5.3-flash",
+      analysis: payload.analysis,
+      elapsedMs: performance.now() - started,
+      pills: [],
+    };
+    result = visualSuggestionResult();
     scanProgress = "";
   } catch (e) {
     if (version !== scanVersion) return;
@@ -703,98 +656,6 @@ async function analyzePhoto() {
         $("#check-result")?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
-  }
-}
-async function useExample(multiple) {
-  if (exampleBusy) return;
-  const exampleVersion = ++scanVersion;
-  exampleError = "";
-  exampleBusy = true;
-  scanBusy = false;
-  scan = null;
-  result = null;
-  scanProgress = "Loading test photo…";
-  render();
-  try {
-    const file = multiple ? "/examples/dose-two.jpg" : "/examples/pill-1.jpg";
-    const [response, manifestResponse] = await Promise.all([
-      fetch(file),
-      fetch("/examples/manifest.json"),
-    ]);
-    if (!response.ok) throw Error("The example images are not available yet.");
-    if (!response.headers.get("content-type")?.startsWith("image/"))
-      throw Error("The test photo URL did not return an image. Reload the app and try again.");
-    if (!manifestResponse.ok)
-      throw Error("The test photo details could not be loaded. Reload and try again.");
-    const [blob, samples] = await Promise.all([
-      response.blob(),
-      manifestResponse.json(),
-    ]);
-    if (!Array.isArray(samples) || samples.length < (multiple ? 2 : 1))
-      throw Error("The test photo details are incomplete. Reload and try again.");
-    scanProgress = "Loading the on-device model…";
-    render();
-    const catalog = await getCatalog((message) => {
-      if (exampleVersion !== scanVersion) return;
-      scanProgress = message;
-      if (page === "check") render();
-    });
-    if (exampleVersion !== scanVersion) return;
-    const demonstration = samples.slice(0, multiple ? 2 : 1);
-    if (
-      !Array.isArray(catalog.catalog) ||
-      demonstration.some((sample) => !catalog.catalog.some((entry) => entry.id === sample.id))
-    )
-      throw Error("The test photo does not match the installed recognition library. Reload the app and try again.");
-    const demoId = "demo-vision";
-    const shapes = ["Capsule", "Round"],
-      tints = ["Orange", "Blue"];
-    const demoMeds = demonstration.map((sample, i) => {
-      const entry = catalog.catalog.find((c) => c.id === sample.id);
-      return {
-        id: "vision-pill-" + i,
-        name: short(entry?.label?.name || "Reference pill " + (i + 1), 30),
-        strength: entry?.label?.strength || "See bottle",
-        quantity: 1,
-        slots: [currentSlot()],
-        color: tints[i],
-        shape: shapes[i],
-        imprint: "From research reference",
-        manufacturer: entry?.label?.manufacturer || "Research sample",
-        rx: null,
-        ndc: entry?.ndc || sample.ndc,
-        pillId: sample.id,
-        startDate: dayKey(),
-      };
-    });
-    state.patients = state.patients.filter((p) => p.id !== demoId);
-    state.patients.push({
-      id: demoId,
-      name: "Vision demo",
-      meds: demoMeds,
-      logs: [],
-      refills: [],
-      organizer: {},
-    });
-    state.active = demoId;
-    state.demo = true;
-    selectedSlot = currentSlot();
-    save();
-    if (photoUrl) URL.revokeObjectURL(photoUrl);
-    photo = blob;
-    photoUrl = URL.createObjectURL(blob);
-    scanMode = multiple ? "dose" : "single";
-    exampleError = "";
-    exampleBusy = false;
-    scanProgress = "";
-    await analyzePhoto();
-  } catch (e) {
-    if (exampleVersion !== scanVersion) return;
-    exampleBusy = false;
-    scanProgress = "";
-    exampleError = e.message || "Check your connection and reload the page, then try again.";
-    toast(exampleError);
-    if (page === "check") render();
   }
 }
 function organizer() {
@@ -887,37 +748,26 @@ function settings() {
       ["zh-CN", "中文"],
     ]
       .map(([id, label]) => `<option value="${id}" ${state.language === id ? "selected" : ""}>${label}</option>`)
-      .join("")}</select></label><button class="row" data-action="speak"><span class="ico-tile t-teal">${icon("volume-2")}</span><span class="grow row-title">Play a sample</span><span class="chev">${icon("chevron-right")}</span></button></div></div>
+      .join("")}</select></label><button class="row" data-action="speak"><span class="ico-tile t-teal">${icon("volume-2")}</span><span class="grow row-title">Play a voice preview</span><span class="chev">${icon("chevron-right")}</span></button></div></div>
 <div class="section"><div class="section-head"><h2>Your data</h2></div><div class="list"><button class="row" data-action="export"><span class="ico-tile t-blue">${icon("download")}</span><span class="grow"><span class="row-title">Export a backup</span><br><span class="row-sub">Contains health information; keep it private</span></span><span class="chev">${icon("chevron-right")}</span></button><label class="row" for="import-file"><span class="ico-tile t-green">${icon("upload")}</span><span class="grow"><span class="row-title">Restore from a backup</span><br><span class="row-sub">You confirm before anything is replaced</span></span><span class="chev">${icon("chevron-right")}</span></label><button class="row" data-action="reset"><span class="ico-tile t-red">${icon("trash-2")}</span><span class="grow row-title" style="color:var(--red)">Erase all data on this device</span></button></div><input id="import-file" type="file" accept="application/json,.json"></div>
-<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow"><span class="row-title">How PillCheck works</span><br><span class="row-sub">Accuracy, limits and data sources</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Records stay in this browser, unencrypted. Photos stay in memory and are never uploaded. A medicine name or NDC is sent to the U.S. National Library of Medicine only when you use lookup. No analytics or tracking.</p><p class="caption">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
+<div class="section"><div class="section-head"><h2>About</h2></div><div class="list"><button class="row" data-page="about"><span class="ico-tile t-blue">${icon("circle-help")}</span><span class="grow"><span class="row-title">How PillCheck works</span><br><span class="row-sub">Accuracy, limits and data sources</span></span><span class="chev">${icon("chevron-right")}</span></button><button class="row" data-page="welcome"><span class="ico-tile t-gray">${icon("sparkles")}</span><span class="grow row-title">Show the welcome screen</span><span class="chev">${icon("chevron-right")}</span></button></div><p class="caption">Care profiles and logs stay in this browser, unencrypted. When you analyze a photo, PillCheck sends a compressed copy to NVIDIA’s GLM-5.3-Flash endpoint. NVIDIA says its trial service may record prompts and images for service operation and improvement. PillCheck does not store the photo. Avoid including labels, faces, or documents. <a href="https://build.nvidia.com/z-ai/glm-5-3-flash/modelcard" target="_blank" rel="noopener">NVIDIA model and privacy details</a>.</p><p class="caption">A medicine name or NDC is sent to the U.S. National Library of Medicine only when you use lookup. No analytics or tracking.</p><p class="caption">This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.</p></div>`
   );
 }
 function about() {
-  const e = visionEvaluation,
-    pct = (x) => (x * 100).toFixed(1) + "%",
-    prev = e?.previous,
-    precision = e?.testAccepted ? e.testAcceptedCorrect / e.testAccepted : 0,
-    delta = (now, before) =>
-      before != null ? `<small>+${((now - before) * 100).toFixed(1)} pts vs. v1</small>` : "";
   return (
     topbar("How it works", { back: "settings" }) +
-    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Find each pill</b><p>The photo is split into separate pills against the plain background.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Recognize it</b><p>A vision model fine-tuned on NIH pill images compares each pill with ${(e?.galleryRows || 11783).toLocaleString()} reference photos of ${(e?.pillTypes || 4902).toLocaleString()} pill types, all on this device.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Compare with the plan</b><p>Each pill must match a bottle NDC in the plan, with the right count. Anything unclear is reported as “not sure”.</p></div></div></div>` +
-    (e
-      ? `<div class="section"><div class="section-head"><h2>Measured accuracy</h2></div><div class="metrics"><div class="card metric"><b>${pct(e.testTop1)}</b><span>Right on the first guess</span>${delta(e.testTop1, prev?.testTop1)}</div><div class="card metric"><b>${pct(e.testTop3)}</b><span>Right pill in the top 3</span>${delta(e.testTop3, prev?.testTop3)}</div><div class="card metric"><b>${pct(precision)}</b><span>Right when confident</span>${prev ? delta(precision, prev.testAcceptedCorrect / prev.testAccepted) : ""}</div><div class="card metric"><b>${pct(e.testAccepted / e.testImages)}</b><span>Answered confidently</span>${prev ? delta(e.testAccepted / e.testImages, prev.testAccepted / e.testImages) : ""}</div></div><p class="caption">Measured on ${e.testImages} phone photos never used in training (model ${esc(e.model)}). These are research benchmark results on cropped photos of known pills, not a clinical study.</p></div>`
-      : "") +
-    `<div class="section notice orange">${art("warning", 32)}<div><b>Know the limits</b><p>The model can be wrong and is not clinically validated. It cannot read imprints, scan barcodes or detect counterfeits, and the NIH library is historical. Never take an unfamiliar pill because of an app result.</p></div></div><p class="caption">Reference data: <a href="https://github.com/usuyama/ePillID-benchmark" target="_blank" rel="noopener">ePillID / NIH NLM</a>. Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT).</p>`
+    `<div class="card" style="display:grid;gap:18px"><div class="feature">${art("camera", 46)}<div><b>1 · Find separate objects</b><p>The live camera uses simple background segmentation to draw outlines. It can mistake other objects for pills or miss touching pills.</p></div></div><div class="feature">${art("search", 46)}<div><b>2 · Ask GLM-5.3-Flash for a visual description</b><p>After you capture or select a photo, the server sends a compressed copy to NVIDIA. GLM may describe shape and color, read a visible imprint, or suggest possibilities.</p></div></div><div class="feature">${art("check", 46)}<div><b>3 · Check the pharmacy label</b><p>The model does not verify pill identity against your plan. Treat every suggestion as uncertain and confirm each pill using its original label or a pharmacist.</p></div></div></div><div class="section notice orange">${art("warning", 32)}<div><b>Know the limits</b><p>GLM-5.3-Flash is not clinically validated for medication identification and can be wrong. Color and shape alone are not enough to identify a pill. Never take an unfamiliar pill because of an AI suggestion.</p></div></div><p class="caption">The bundled DINOv2 recognition files remain in this repository but are not called by the app. Icons: Lucide (ISC). Illustrations: Microsoft Fluent Emoji (MIT).</p>`
   );
 }
 function profilesSheet() {
   openDialog(
     dialogHead("Who are you checking for?") +
-      `<div class="list">${state.patients.map((x) => `<button class="row" data-pick-profile="${esc(x.id)}"><span class="avatar sm">${initials(x.name)}</span><span class="grow"><span class="row-title">${esc(x.name)}</span><br><span class="row-sub">${x.meds.length} medication${x.meds.length === 1 ? "" : "s"}${x.id.startsWith("demo") ? " · sample" : ""}</span></span>${x.id === patient().id ? `<span style="color:var(--accent)">${icon("check")}</span>` : ""}</button>`).join("")}</div><div class="dialog-actions">${button("Add a person", "sheet-new-profile", "block", "user-plus")}</div>`,
+      `<div class="list">${state.patients.map((x) => `<button class="row" data-pick-profile="${esc(x.id)}"><span class="avatar sm">${initials(x.name)}</span><span class="grow"><span class="row-title">${esc(x.name)}</span><br><span class="row-sub">${x.meds.length} medication${x.meds.length === 1 ? "" : "s"}</span></span>${x.id === patient().id ? `<span style="color:var(--accent)">${icon("check")}</span>` : ""}</button>`).join("")}</div><div class="dialog-actions">${button("Add a person", "sheet-new-profile", "block", "user-plus")}</div>`,
   );
   document.querySelectorAll("#modal [data-pick-profile]").forEach(
     (b) =>
       (b.onclick = () => {
         state.active = b.dataset.pickProfile;
-        state.demo = patient().id.startsWith("demo");
         save();
         resetCheck();
         viewDay = dayKey();
@@ -1091,7 +941,6 @@ function newProfile() {
     };
     state.patients.push(p);
     state.active = p.id;
-    state.demo = false;
     state.onboarded = true;
     resetCheck();
     save();
@@ -1163,7 +1012,7 @@ function logDose(status) {
     at: new Date().toISOString(),
     note:
       status === "taken"
-        ? "Self-reported after automatic visual comparison"
+        ? "Self-reported after checking the pharmacy label and dose plan"
         : result?.title || "Concern reported",
     medications: dosesFor(p, selectedSlot).map((m) => ({
       name: m.name,
@@ -1174,13 +1023,8 @@ function logDose(status) {
     recognition: scan
       ? {
           model: scan.model,
-          pills: scan.pills.map((p) => ({
-            id: p.candidates[0]?.id,
-            score: p.candidates[0]?.score,
-            margin: p.margin,
-            accepted: p.accepted,
-          })),
           elapsedMs: scan.elapsedMs,
+          userConfirmed: status === "taken",
         }
       : null,
   });
@@ -1203,11 +1047,11 @@ function speak() {
   }
   const lang = state.language || "en-US",
     texts = {
-      "en-US": `Hello ${patient().name}. Review the ${selectedSlot.toLowerCase()} dose against your prescription plan. Photograph the separated pills on a plain contrasting background and review the automatic results. If a result is uncertain, ask a caregiver or pharmacist for help. The experimental image model can suggest visual references, but can be wrong. Ask a pharmacist about unfamiliar pills.`,
+      "en-US": `Hello ${patient().name}. Review the ${selectedSlot.toLowerCase()} dose against your prescription plan. A photo will be sent to NVIDIA for a visual suggestion. Check every pill against the pharmacy label; if anything is unclear, ask a caregiver or pharmacist.`,
       "es-US":
-        "Fotografíe las pastillas separadas sobre un fondo liso y revise los resultados automáticos. Si el resultado es incierto, consulte a su farmacéutico. El modelo de reconocimiento es experimental y puede equivocarse.",
+        "La foto se enviará a NVIDIA para obtener una sugerencia visual. Compare cada pastilla con la etiqueta de la farmacia y consulte a su farmacéutico si tiene dudas.",
       "zh-CN":
-        "请将药片分开放在纯色背景上拍照，并查看自动识别结果。如果结果不确定，请咨询药剂师。本应用的图像识别模型处于研究阶段，可能出错。",
+        "照片会发送到 NVIDIA 获取视觉建议。请将每片药与药房标签核对；如有疑问，请咨询药剂师。",
     };
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(texts[lang] || texts["en-US"]);
@@ -1230,12 +1074,12 @@ function report() {
     el.className = "report-only";
     document.body.append(el);
   }
-  el.innerHTML = `<h1>PillCheck · Weekly care record</h1><p>${esc(p.name)} · Generated ${esc(new Date().toLocaleString())}${p.id.startsWith("demo") ? " · FICTIONAL SAMPLE PROFILE" : ""}</p><p>${stats.taken} of ${stats.expected} scheduled periods self-reported taken (${stats.percent}%). Today counts periods through ${currentSlot()}.</p><h2>Current medication plan</h2><table><thead><tr><th>Medication</th><th>Strength</th><th>Quantity</th><th>Periods</th></tr></thead><tbody>${p.meds.map((m) => `<tr><td>${esc(m.name)}</td><td>${esc(m.strength)}</td><td>${m.quantity}</td><td>${m.slots.join(", ")}</td></tr>`).join("")}</tbody></table><h2>Past seven days</h2><table><thead><tr><th>Date</th><th>Period</th><th>Reported status</th><th>Note</th></tr></thead><tbody>${logs.map((l) => `<tr><td>${esc(l.day)}</td><td>${esc(l.slot)}</td><td>${esc(l.status)}</td><td>${esc(l.note)}</td></tr>`).join("")}</tbody></table><h2>Refill notes</h2>${
+  el.innerHTML = `<h1>PillCheck · Weekly care record</h1><p>${esc(p.name)} · Generated ${esc(new Date().toLocaleString())}</p><p>${stats.taken} of ${stats.expected} scheduled periods self-reported taken (${stats.percent}%). Today counts periods through ${currentSlot()}.</p><h2>Current medication plan</h2><table><thead><tr><th>Medication</th><th>Strength</th><th>Quantity</th><th>Periods</th></tr></thead><tbody>${p.meds.map((m) => `<tr><td>${esc(m.name)}</td><td>${esc(m.strength)}</td><td>${m.quantity}</td><td>${m.slots.join(", ")}</td></tr>`).join("")}</tbody></table><h2>Past seven days</h2><table><thead><tr><th>Date</th><th>Period</th><th>Reported status</th><th>Note</th></tr></thead><tbody>${logs.map((l) => `<tr><td>${esc(l.day)}</td><td>${esc(l.slot)}</td><td>${esc(l.status)}</td><td>${esc(l.note)}</td></tr>`).join("")}</tbody></table><h2>Refill notes</h2>${
     p.refills
       .filter((r) => r.at.slice(0, 10) >= dayKey(cutoff))
       .map((r) => `<p>${esc(r.name)}: ${esc(r.note)}</p>`)
       .join("") || "<p>No refill notes this week.</p>"
-  }<p>This is a self-reported record, not proof of ingestion or pill identity. PillCheck is a double-check aid and does not replace a pharmacist. Automatic visual recognition is experimental and can be wrong. No clinical accuracy guarantee is active.</p>`;
+  }<p>This is a self-reported record, not proof of ingestion or pill identity. PillCheck is a double-check aid and does not replace a pharmacist. GLM-5.3-Flash suggestions are unverified and can be wrong. No clinical accuracy guarantee is active.</p>`;
   window.print();
 }
 function exportData() {
@@ -1255,8 +1099,6 @@ function setPhoto(f) {
   if (f.size > 15 * 1024 * 1024) return toast("Please choose a photo under 15 MB.");
   stopCamera();
   cameraError = "";
-  exampleError = "";
-  exampleBusy = false;
   if (photoUrl) URL.revokeObjectURL(photoUrl);
   scanVersion++;
   scan = null;
@@ -1286,12 +1128,7 @@ function bind() {
         if (page !== "check") resetCheck();
         selectedSlot = b.dataset.slot;
         observations = {};
-        result = scan
-          ? evaluateScan(patient(), selectedSlot, scan, {
-              day: dayKey(),
-              currentSlot: currentSlot(),
-            })
-          : null;
+        result = scan ? visualSuggestionResult() : null;
         if (page !== "check") nav("check");
         else render();
       }),
@@ -1337,7 +1174,6 @@ function bind() {
     (b) =>
       (b.onclick = () => {
         state.active = b.dataset.patient;
-        state.demo = patient().id.startsWith("demo");
         save();
         resetCheck();
         render();
@@ -1370,10 +1206,9 @@ function bind() {
     },
     profiles: profilesSheet,
     about: () => nav("about"),
-    "enter-demo": () => {
-      state.onboarded = true;
-      save();
-      nav("today");
+    "back-to-app": () => {
+      page = state.patients.length ? "today" : "welcome";
+      render();
     },
     about: () => nav("welcome"),
     "toggle-theme": () => {
@@ -1407,19 +1242,10 @@ function bind() {
         details.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     },
-    "example-single": () => useExample(false),
-    "example-dose": () => useExample(true),
     "go-meds": () => nav("meds"),
     "log-taken": () => {
-      const fresh = evaluateScan(patient(), selectedSlot, scan, {
-        day: dayKey(),
-        currentSlot: currentSlot(),
-      });
-      if (fresh.type !== "matched") {
-        result = fresh;
-        render();
-        return;
-      }
+      if (!$("#manual-dose-confirm")?.checked)
+        return toast("Check each pill against the pharmacy label and dose plan first.");
       logDose("taken");
     },
     "log-concern": () => logDose("concern"),
@@ -1428,13 +1254,13 @@ function bind() {
         "Erase this device?",
         "This removes all profiles and records from this browser. Export a backup first if you need them.",
         () => {
-          state = demoState();
+          state = emptyState();
           save();
           resetCheck();
-          page = "today";
+          page = "welcome";
           render();
           window.scrollTo(0, 0);
-          toast("Local data erased. Sample profile opened.");
+          toast("All local data erased.");
         },
         "Erase all data",
       ),
@@ -1442,9 +1268,10 @@ function bind() {
   document
     .querySelectorAll("[data-action]")
     .forEach((b) => (b.onclick = () => actions[b.dataset.action]?.()));
-  document
-    .querySelectorAll("[data-connect-pill]")
-    .forEach((b) => (b.onclick = () => connectPill(b.dataset.connectPill)));
+  if ($("#manual-dose-confirm"))
+    $("#manual-dose-confirm").onchange = (e) => {
+      $("#manual-log").disabled = !e.target.checked;
+    };
   if ($("#med-search"))
     $("#med-search").oninput = (e) => {
       const pos = e.target.selectionStart;
@@ -1513,7 +1340,7 @@ function bind() {
         if (!f) return;
         if (f.size > 5 * 1024 * 1024)
           throw Error("Backup must be smaller than 5 MB.");
-        const imported = JSON.parse(await f.text());
+        const imported = removeSampleProfiles(JSON.parse(await f.text()));
         if (!validateState(imported))
           throw Error("This is not a valid PillCheck backup.");
         confirmDialog(
@@ -1523,10 +1350,10 @@ function bind() {
             state = imported;
             state.active = state.patients.some((p) => p.id === state.active)
               ? state.active
-              : state.patients[0].id;
-            state.demo = patient().id.startsWith("demo");
+              : state.patients[0]?.id || null;
             save();
             resetCheck();
+            page = state.patients.length ? "today" : "welcome";
             render();
             toast("Backup restored.");
           },
@@ -1543,9 +1370,10 @@ $("#modal").addEventListener("click", (e) => {
 window.addEventListener("storage", (e) => {
   if (e.key === "pillcheck-v1") {
     try {
-      const incoming = JSON.parse(e.newValue);
+      const incoming = removeSampleProfiles(JSON.parse(e.newValue));
       if (validateState(incoming)) {
         state = incoming;
+        if (!state.patients.length) page = "welcome";
         resetCheck();
         render();
         toast("Updated from another tab.");
@@ -1565,46 +1393,3 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", stopCamera);
 render();
-
-async function connectPill(id) {
-  const catalog = await getCatalog();
-  const entry = catalog.catalog.find((c) => c.id === id);
-  if (!entry) return;
-  const matches = patient().meds.filter(
-    (m) => productNdc(m.ndc) === productNdc(entry.ndc),
-  );
-  openDialog(
-    dialogHead("Connect this pill reference") +
-      `<div class="ref-tile full" style="${referenceStyle(catalog.catalog.indexOf(entry))}"></div><p class="small section-gap"><strong>NDC ${esc(entry.ndc)}</strong><br>Only connect this reference if its NDC matches the bottle label. A model suggestion is not confirmation of identity.</p><label class="field-group section-gap">Medication in your plan<select id="connect-med">${patient()
-        .meds.map(
-          (m) =>
-            `<option value="${esc(m.id)}" ${matches.some((x) => x.id === m.id) ? "selected" : ""}>${esc(m.name)} ${esc(m.strength)}</option>`,
-        )
-        .join(
-          "",
-        )}</select></label><label class="checks section-gap"><input type="checkbox" id="connect-confirm"> I checked this NDC against the bottle</label><p class="error" id="connect-error"></p><div class="dialog-actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="connect-save">Connect reference</button></div>`,
-  );
-  $("#connect-save").onclick = () => {
-    if (!$("#connect-confirm").checked) {
-      $("#connect-error").textContent =
-        "Check the exact NDC on the bottle before connecting.";
-      return;
-    }
-    const med = patient().meds.find((m) => m.id === $("#connect-med").value);
-    if (!med) {
-      $("#connect-error").textContent = "Add a medication to your plan first.";
-      return;
-    }
-    med.ndc = entry.ndc;
-    med.pillId = entry.id;
-    save();
-    $("#modal").close();
-    if (scan)
-      result = evaluateScan(patient(), selectedSlot, scan, {
-        day: dayKey(),
-        currentSlot: currentSlot(),
-      });
-    render();
-    toast("Bottle reference connected.");
-  };
-}
