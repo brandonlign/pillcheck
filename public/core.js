@@ -116,7 +116,6 @@ export function adherence(patient, days = 7, date = new Date()) {
   return {
     expected,
     taken,
-    percent: expected ? Math.round((taken / expected) * 100) : 0,
     daily,
   };
 }
