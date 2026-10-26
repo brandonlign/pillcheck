@@ -1,5 +1,6 @@
-import { detectPills, rankEmbeddings, productNdc } from "./recognition-core.js";
-let loading, session, manifest, gallery, runtime;
+import { detectPills, pillsFromMaps, rankEmbeddings, productNdc } from "./recognition-core.js";
+// finder: the small network that outlines each pill in a photo (vision/train_segmenter.py).
+let loading, session, finder, manifest, gallery, runtime;
 // Product-level view of the gallery, built once: every gallery row maps to one
 // product (normalized NDC), so each pill gets a score for every product.
 let productIndex, rowProduct, productEntry;
@@ -86,6 +87,15 @@ export async function loadRecognition(progress = () => {}) {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
       });
+      // The pill finder is small (~4 MB). Without it, the color-based detector is used.
+      try {
+        finder = await runtime.InferenceSession.create("/models/pill-finder.onnx", {
+          executionProviders: ["wasm"],
+          graphOptimizationLevel: "all",
+        });
+      } catch {
+        finder = null;
+      }
       setStatus({ state: "ready", message: "Recognition is ready. Photos stay on this device." });
       return manifest;
     })().catch((e) => {
@@ -197,6 +207,33 @@ async function classify(source) {
       agree >= (t.agree || 1),
   };
 }
+// Runs the pill finder on a copy of the photo (longest side `maxSide`, sides a
+// multiple of 16) and returns pill boxes in the source's pixels.
+async function findPills(source, maxSide = 320) {
+  const s = Math.min(1, maxSide / Math.max(source.width, source.height)),
+    w = Math.max(16, Math.round((source.width * s) / 16) * 16),
+    h = Math.max(16, Math.round((source.height * s) / 16) * 16),
+    c = canvas(w, h),
+    ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, w, h);
+  const pixels = ctx.getImageData(0, 0, w, h).data,
+    plane = w * h,
+    input = new Float32Array(3 * plane);
+  for (let i = 0; i < plane; i++) for (let j = 0; j < 3; j++) input[j * plane + i] = pixels[i * 4 + j] / 255;
+  const { maps } = await finder.run({ image: new runtime.Tensor("float32", input, [1, 3, h, w]) }),
+    found = pillsFromMaps(maps.data, w, h, 1);
+  // Map pixels back to source pixels (x and y scale differ slightly after rounding).
+  const kx = source.width / w,
+    ky = source.height / h;
+  found.components = found.components.map((b) => ({ ...b, x: b.x * kx, y: b.y * ky, width: b.width * kx, height: b.height * ky }));
+  return found;
+}
+// For the live camera preview: pill boxes for a video frame, or null before the
+// models are ready (the caller then uses the color-based detector).
+export async function findPillsLive(source) {
+  if (!finder) return null;
+  return findPills(source, 224);
+}
 export async function recognizePhoto(
   file,
   { mode = "dose", progress = () => {} } = {},
@@ -214,7 +251,7 @@ export async function recognizePhoto(
     );
   source.getContext("2d").drawImage(bitmap, 0, 0, source.width, source.height);
   bitmap.close();
-  let regions,
+  let regions = [],
     quality = [],
     detection;
   if (mode === "single")
@@ -222,21 +259,42 @@ export async function recognizePhoto(
       { x: 0, y: 0, width: source.width, height: source.height, single: true },
     ];
   else {
-    const small = canvas(
-        Math.round(source.width * 0.65),
-        Math.round(source.height * 0.65),
-      ),
+    const small = canvas(Math.round(source.width * 0.65), Math.round(source.height * 0.65)),
       ctx = small.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(source, 0, 0, small.width, small.height);
-    detection = detectPills(ctx.getImageData(0, 0, small.width, small.height));
+    const color = detectPills(ctx.getImageData(0, 0, small.width, small.height)),
+      k = source.width / small.width;
+    color.components = color.components.map((b) => ({ ...b, x: b.x * k, y: b.y * k, width: b.width * k, height: b.height * k }));
+    detection = finder ? await findPills(source) : color;
+    // On a plain, even surface the color-based detector is reliable, so it adds any
+    // pill the network missed (for example a gray capsule on gray paper).
+    if (finder && color.plain) {
+      const overlaps = (a, b) =>
+        Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x)) *
+          Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y)) >
+        0.2 * Math.min(a.width * a.height, b.width * b.height);
+      const largest = Math.max(0, ...detection.components.map((d) => d.width * d.height)),
+        inside = (c) => c.x > 2 && c.y > 2 && c.x + c.width < source.width - 2 && c.y + c.height < source.height - 2,
+        extra = color.components.filter(
+          (c) =>
+            inside(c) &&
+            (!largest || c.width * c.height <= 2.5 * largest) &&
+            !detection.components.some((d) => overlaps(c, d)),
+        );
+      detection.components = [...detection.components, ...extra].sort((a, b) => a.x - b.x);
+    }
     quality = detection.quality;
-    regions = detection.components.map((b) => ({
-      ...b,
-      x: (b.x * source.width) / small.width,
-      y: (b.y * source.height) / small.height,
-      width: (b.width * source.width) / small.width,
-      height: (b.height * source.height) / small.height,
-    }));
+    regions = detection.components;
+    // Nothing separate was found (busy surface, or one pill filling the frame):
+    // check the middle of the photo as one pill rather than returning nothing.
+    if (!regions.length) {
+      const side = Math.min(source.width, source.height) * 0.7;
+      regions = [{ x: (source.width - side) / 2, y: (source.height - side) / 2, width: side, height: side, fallback: true }];
+      quality = [
+        "PillCheck couldn’t outline separate pills, so it checked the middle of the photo. For a better result, spread the pills on a plain surface.",
+        ...quality,
+      ];
+    }
   }
   const pills = [];
   for (let i = 0; i < regions.length; i++) {
@@ -247,22 +305,22 @@ export async function recognizePhoto(
     let crop;
     if (box.single) crop = source;
     else {
-      const side = Math.max(box.width, box.height) * 1.17;
-      crop = canvas(manifest.inputSize, manifest.inputSize);
+      // Same framing as the training photos: the pill's box with a small margin,
+      // scaled to fit and centered on black (letterboxed, not stretched).
+      const size = manifest.inputSize,
+        pad = box.fallback ? 0 : 0.08,
+        x0 = Math.max(0, box.x - box.width * pad),
+        y0 = Math.max(0, box.y - box.height * pad),
+        bw = Math.min(source.width, box.x + box.width * (1 + pad)) - x0,
+        bh = Math.min(source.height, box.y + box.height * (1 + pad)) - y0,
+        fit = size / Math.max(bw, bh),
+        dw = bw * fit,
+        dh = bh * fit;
+      crop = canvas(size, size);
       const ctx = crop.getContext("2d");
       ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, crop.width, crop.height);
-      ctx.drawImage(
-        source,
-        box.x - (side - box.width) / 2,
-        box.y - (side - box.height) / 2,
-        side,
-        side,
-        0,
-        0,
-        crop.width,
-        crop.height,
-      );
+      ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(source, x0, y0, bw, bh, (size - dw) / 2, (size - dh) / 2, dw, dh);
     }
     const prediction = await classify(crop);
     pills.push({

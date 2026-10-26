@@ -3,7 +3,7 @@ import {
   evaluateScan,
   productNdc,
 } from "./recognition-core.js";
-import { recognizePhoto, loadRecognition, modelStatus, onModelStatus, fuseSides } from "./recognition.js";
+import { recognizePhoto, loadRecognition, modelStatus, onModelStatus, fuseSides, findPillsLive } from "./recognition.js";
 import { lucide } from "./icons.js";
 import {
   SLOTS,
@@ -222,10 +222,26 @@ function nav(next) {
     render();
     window.scrollTo(0, 0);
   };
-  // Native-feeling cross-fade between screens where the browser supports it.
-  if (document.startViewTransition && next !== page && !reducedMotion())
-    document.startViewTransition(go).finished.finally(() => $("#main")?.focus({ preventScroll: true }));
-  else {
+  // Native-feeling cross-fade between screens where the browser supports it. The
+  // transition waits for a rendered frame, so if frames are paused (background tab,
+  // some screen recorders) switch screens anyway after a short fallback.
+  if (document.startViewTransition && next !== page && !reducedMotion()) {
+    let done = false;
+    const run = () => {
+      if (done) return;
+      done = true;
+      go();
+      $("#main")?.focus({ preventScroll: true });
+    };
+    const transition = document.startViewTransition(run);
+    transition.finished.catch(() => {});
+    setTimeout(() => {
+      if (!done) {
+        transition.skipTransition?.();
+        run();
+      }
+    }, 250);
+  } else {
     go();
     $("#main")?.focus({ preventScroll: true });
   }
@@ -405,7 +421,7 @@ function resultHtml(meds) {
     canLogFromScan = evaluation.type === "matched",
     identifyOnly =
       evaluation.type === "setup" ||
-      (!expected && found.length > 0 && !scan.quality?.length),
+      (!expected && found.length > 0),
     allKnown = found.length > 0 && found.every((f) => f.accepted),
     tone = identifyOnly
       ? allKnown ? "info" : "warn"
@@ -416,9 +432,11 @@ function resultHtml(meds) {
           : "warn",
     word = identifyOnly ? (allKnown ? "Found." : "Not sure.") : VERDICT[evaluation.type] || "Check again.",
     sub = identifyOnly
-      ? `${found.length} pill${found.length === 1 ? "" : "s"} found. Confirm names on the bottle.`
+      ? found.some((f) => f.accepted)
+        ? `${found.length} pill${found.length === 1 ? "" : "s"} found. Confirm names on the bottle.`
+        : `${found.length} pill${found.length === 1 ? "" : "s"} found, but ${found.length === 1 ? "it doesn’t" : "none"} match PillCheck’s library of about 4,900 prescription pills. Many store-brand and over-the-counter pills aren’t in it yet. Check the bottle label.`
       : canLogFromScan
-        ? `${found.length} of ${expected} pills match your ${selectedSlot.toLowerCase()} plan.`
+        ? `${found.length} of ${expected} ${expected === 1 ? "pill matches" : "pills match"} your ${selectedSlot.toLowerCase()} plan.`
         : evaluation.detail;
   const tiles = found
     .map((f, i) => {
@@ -446,10 +464,12 @@ function resultHtml(meds) {
         ? button(`Scan the other side of pill ${evaluation.flip[0] + 1}`, "flip-scan", "dark block pillbtn", "refresh-cw")
         : canLogFromScan
         ? button("Log dose", "log-taken", "dark block pillbtn")
-        : button("Log manually", "log-manual", "plain block pillbtn");
+        : ["wrong", "missing"].includes(evaluation.type)
+          ? button("Report a problem", "log-concern", "dark block pillbtn", "triangle-alert")
+          : button("Log manually", "log-manual", "plain block pillbtn");
   return `<section class="verdict ${tone}" role="status" id="check-result"><p class="eyebrow">${esc(selectedSlot)} dose</p><h2 class="verdict-word">${word}</h2><p class="verdict-sub">${esc(sub)}</p>${tiles ? `<div class="tiles">${tiles}</div>` : ""}${scan.quality?.length ? `<p class="verdict-note">${esc(scan.quality.join(" "))}</p>` : ""}</section>
 <div class="actions">${primary}<button class="link quiet center" data-action="retake">Retake</button></div>
-<p class="fineprint">Compares appearance only. Check the bottle label.${identifyOnly ? "" : ` <button class="link inline" data-action="log-concern">Report a problem</button>`}</p>`;
+<p class="fineprint">Compares appearance only. Check the bottle label.${identifyOnly || ["wrong", "missing"].includes(evaluation.type) ? "" : ` <button class="link inline" data-action="log-concern">Report a problem</button>`}</p>`;
 }
 // Result photo with HTML brackets that "lock on" to each detected pill in turn.
 function lockOn() {
@@ -465,7 +485,9 @@ function lockOn() {
               return `<span class="lock ${f.accepted ? "ok" : "unsure"}" style="left:${((b.x / w) * 100).toFixed(2)}%;top:${((b.y / h) * 100).toFixed(2)}%;width:${((b.width / w) * 100).toFixed(2)}%;height:${((b.height / h) * 100).toFixed(2)}%;animation-delay:${(i * 0.22).toFixed(2)}s"><span class="lock-tag">${i + 1}${f.accepted ? " ✓" : " ?"}</span></span>`;
             })
             .join("");
-  return `<div class="viewfinder shot lockon" style="aspect-ratio:${w}/${h};width:min(100%, calc(52vh * ${(w / h).toFixed(3)}))"><img src="${esc(src)}" alt="Scanned photo with ${scan.pills.length} detected pill${scan.pills.length === 1 ? "" : "s"}">${boxes}</div>`;
+  // Boxes are placed in a frame with the photo's exact shape, so they line up with
+  // the pills however the photo area around it is sized.
+  return `<div class="viewfinder shot lockon" style="aspect-ratio:${w}/${h};width:min(100%, calc(52vh * ${(w / h).toFixed(3)}))"><div class="lock-frame" style="--r:${(w / h).toFixed(4)}"><img src="${esc(src)}" alt="Scanned photo with ${scan.pills.length} detected pill${scan.pills.length === 1 ? "" : "s"}">${boxes}</div></div>`;
 }
 // Shown on the idle Scan screen while the one-time model download is running.
 function modelStatusHtml() {
@@ -605,6 +627,7 @@ function connectCameraPreview() {
       willReadFrequently: true,
     });
   let lastDetection = -Infinity,
+    liveBusy = false,
     components = [],
     quality = [];
   video.srcObject = stream;
@@ -627,7 +650,7 @@ function connectCameraPreview() {
         overlay.width = video.videoWidth;
         overlay.height = video.videoHeight;
       }
-      if (now - lastDetection >= 400) {
+      if (now - lastDetection >= 400 && !liveBusy) {
         lastDetection = now;
         const width = Math.min(480, video.videoWidth),
           height = Math.max(
@@ -637,16 +660,20 @@ function connectCameraPreview() {
         detectorCanvas.width = width;
         detectorCanvas.height = height;
         detectorContext.drawImage(video, 0, 0, width, height);
-        try {
-          const detected = detectPills(
-            detectorContext.getImageData(0, 0, width, height),
-          );
-          components = detected.components;
-          quality = detected.quality;
-        } catch {
-          components = [];
-          quality = [];
-        }
+        // The pill finder network once the models are loaded; the color-based
+        // detector until then.
+        liveBusy = true;
+        findPillsLive(detectorCanvas)
+          .then((found) => found || detectPills(detectorContext.getImageData(0, 0, width, height), { maxSide: 240 }))
+          .then((detected) => {
+            components = detected.components;
+            quality = detected.quality;
+          })
+          .catch(() => {
+            components = [];
+            quality = [];
+          })
+          .finally(() => (liveBusy = false));
       }
       overlayContext.clearRect(0, 0, overlay.width, overlay.height);
       overlayContext.lineWidth = Math.max(3, video.videoWidth / 420);
@@ -718,8 +745,9 @@ async function analyzePhoto() {
   render();
   // Inference blocks the main thread, so make sure the photo is decoded and the
   // scanning view has painted (the sweep animation then runs on the compositor).
-  await $(".cam-view > img")?.decode?.().catch(() => {});
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const settle = (promise, ms) => Promise.race([promise, new Promise((r) => setTimeout(r, ms))]);
+  await settle($(".cam-view > img")?.decode?.().catch(() => {}), 400);
+  await settle(new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))), 120);
   const started = performance.now();
   try {
     const flipping = flipTarget !== null && baseScan;
@@ -1050,7 +1078,7 @@ function startDemo() {
   save();
   if ($("#modal").open) $("#modal").close();
   nav("today");
-  toast("Demo loaded. Tap Scan morning dose to try a sample photo.");
+  toast("Demo loaded. Tap Scan a dose to try a sample.");
 }
 function exitDemo() {
   state.patients = state.patients.filter((x) => !x.demo);
@@ -1148,7 +1176,7 @@ function celebrate(slot, streakBefore, streakNow, palette = []) {
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-modal", "true");
   el.setAttribute("aria-label", "Dose logged");
-  el.innerHTML = `<div class="celebrate-card">${seal("check", 112)}<h1>Logged.</h1><p>${esc(slot)} dose · ${esc(time)}</p>${streakNow ? `<p class="celebrate-streak">${icon("flame")}<b id="streak-count">${streakBefore}</b>-day streak</p>` : ""}<button class="btn dark block celebrate-done">Done</button></div>`;
+  el.innerHTML = `<div class="celebrate-card">${seal("check", 112)}<h1>Logged.</h1><p>${esc(slot)} dose · ${esc(time)}</p>${streakNow ? `<p class="celebrate-streak">${icon("flame")}<span><b id="streak-count">${streakBefore}</b>-day streak</span></p>` : ""}<button class="btn dark block celebrate-done">Done</button></div>`;
   document.body.append(el);
   navigator.vibrate?.([18, 50, 28]);
   const close = () => {

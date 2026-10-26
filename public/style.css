@@ -1128,6 +1128,20 @@ label.row:hover {
   border-radius: 20px;
   object-fit: fill;
 }
+.lock-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--r);
+}
+.lock-frame > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.result-b .lock-frame {
+  width: min(100%, calc(46vh * var(--r)));
+}
 .lock {
   position: absolute;
   --lc: var(--green-bright);
@@ -1455,6 +1469,8 @@ label.row:hover {
   width: min(380px, 100%);
 }
 .celebrate-card .seal {
+  width: 112px;
+  height: 112px;
   margin-bottom: 10px;
   animation: pop 0.55s cubic-bezier(0.3, 1.5, 0.5, 1) both;
 }

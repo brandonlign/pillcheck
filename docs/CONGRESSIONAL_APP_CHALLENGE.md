@@ -71,18 +71,9 @@ The interface was redesigned after studying the top-rated apps in the category o
 
 Plans and logs live in browser local storage. Pill photos are analyzed on-device and are not uploaded. The optional medication-name lookup sends the entered name or NDC to the National Library of Medicine.
 
-## Demo video plan (keep within the official length limit)
+## Demo video
 
-| Time | Show | Say |
-|---|---|---|
-| 0:00–0:20 | You, or a caregiver scene with a pill organizer | The problem, in one personal sentence. |
-| 0:20–0:40 | Welcome screen and Today | "PillCheck double-checks every dose with one photo." |
-| 0:40–1:20 | Add a medication with its imprint, then **Scan**: live outlines, take a real photo | Point out the per-pill result and the green "Matches" labels. |
-| 1:20–1:50 | Scan with a pill missing or a wrong pill | Show the count mismatch and the pill without a match. |
-| 1:50–2:20 | Streak, history, printable report, Larger text, read-aloud | Accessibility and caregiver features. |
-| 2:20–2:40 | Architecture slide | Live outlines, detection model, plan matching, and the on-device model you trained first. |
-
-Tips: record the screen at 1080p; use a phone on a stand for real photos; use a plain dark or light mat; keep the background quiet; add captions.
+The full shot-by-shot script, with exact taps, narration and recording steps, is in [`DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md). The 2026 deadline is **12:00 pm EDT, Monday, October 26, 2026**; the video must be 1 to 3 minutes and set to **Public** on YouTube or Vimeo.
 
 ## Judging questions to rehearse
 
@@ -95,7 +86,8 @@ Tips: record the screen at 1080p; use a phone on a stand for real photos; use a 
 
 - [ ] Confirm eligibility, district participation, team size and the deadline on the official site.
 - [ ] Public code repository with this README and docs (check that no personal data or keys are committed; `.env` is gitignored).
-- [ ] Demo video uploaded as the rules require (for example YouTube or Vimeo, public or unlisted).
+- [ ] Demo video uploaded to YouTube or Vimeo with visibility set to **Public** (the 2026 rules require public).
+- [ ] All AI use disclosed in the submission (see the draft in [`DEMO_VIDEO_SCRIPT.md`](DEMO_VIDEO_SCRIPT.md)).
 - [ ] App description, inspiration, technical challenges and next steps written in your own words.
 - [ ] Cited statistics in the problem statement.
 - [ ] Test the app on a phone: run `HOST=0.0.0.0 npm start` on the laptop and open `http://<laptop-ip>:4173` on the phone (same Wi-Fi).
