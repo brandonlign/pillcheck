@@ -1,6 +1,6 @@
 // Offline support. The app shell is network-first (always fresh when online);
 // retained model assets, fonts and runtime are cache-first after first use.
-const SHELL = "pillcheck-shell-v15";
+const SHELL = "pillcheck-shell-v16";
 const ASSETS = "pillcheck-assets-finetune-v2-plan1";
 const shell = ["/", "/index.html", "/style.css", "/fonts.css", "/app.js", "/core.js", "/icons.js", "/recognition.js", "/recognition-core.js", "/icon.svg", "/manifest.webmanifest"];
 // Demo sample photos are small; precache them so the demo works offline.
