@@ -2,25 +2,25 @@
 
 ```mermaid
 flowchart LR
-  Photo[Camera or chosen photo] --> Detector[Browser: background detector]
-  Detector --> Crops[Separate pill crops]
-  Crops --> ONNX[Browser: fine-tuned DINOv2 ONNX encoder]
-  ONNX --> Gallery[Cosine retrieval against rotation-averaged reference sides + training photos]
-  Gallery --> Gate[Similarity and runner-up gate]
-  Gate --> Plan[Compare product NDCs and counts with plan]
-  Plan --> Result[Match / uncertain / unexpected / missing / wrong time / duplicate]
-  Result --> Log[Explicit self-reported taken log]
-  UI[Care UI] <--> Store[Browser localStorage]
+  Photo[Camera or uploaded photo] --> Finder[Pill finder ONNX + color detector]
+  Finder --> Crops[One crop per pill]
+  Crops --> ONNX[Fine-tuned DINOv2 encoder, 4 rotations]
+  ONNX --> Gallery[Cosine search over reference sides and training photos]
+  Gallery --> Gate[Similarity, runner-up and rotation-agreement gate]
+  Gate --> Plan[Compare products and counts with the plan]
+  Plan --> Result[Match / not sure / wrong pill / missing / wrong time / already logged]
+  Result --> Log[Dose log]
+  UI[App UI] <--> Store[Browser localStorage]
   Store --> Plan
-  Metadata[Bundled reference atlases and public names] --> Result
-  UI -->|Only user-triggered name or NDC search| Proxy[Node localhost proxy]
+  Metadata[Bundled reference images and names] --> Result
+  UI -->|Name or NDC search only| Proxy[Node proxy]
   Proxy --> NLM[NLM RxNorm]
 ```
 
-Photos, inference, embeddings, and detection run in the browser. An optional service worker (`public/sw.js`) caches the app shell and model for offline use; the PWA manifest makes it installable on phones. The server exposes no photograph upload or inference endpoint. The optional RxNorm proxy uses a fixed host, length-limited input, and timeouts. Runtime JavaScript/WASM is served from an explicit three-file allowlist inside the installed `onnxruntime-web` package.
+Detection, recognition and plan matching all run in the browser. The service worker (`public/sw.js`) caches the app and the models so scanning works offline, and the web app manifest makes PillCheck installable on phones. The server has no upload or inference endpoint. Its only job besides serving files is the RxNorm proxy, which uses a fixed host, limits input length and times out slow requests. ONNX Runtime's JavaScript and WASM files are served from an allowlist inside the installed `onnxruntime-web` package.
 
-The recognizer searches the complete library before checking the plan. Restricting retrieval to expected pills would make an incorrect pill too easy to mislabel as an expected one. Duplicate dataset identities of the same normalized product NDC are merged during ranking. Candidate NDCs are compared with the plan's labeler/product; package suffixes are not visual identities.
+The recognizer searches the whole library before looking at the plan. If it only searched the planned medicines, a wrong pill could easily be mislabeled as one of them. Dataset identities that share a product NDC are merged during ranking, and package suffixes are ignored because they don't change how a pill looks.
 
-The neural model is loaded once per tab. A generation counter prevents a stale scan from updating a different profile after navigation. User photos remain in tab memory. Dose logs store candidate IDs, scores, margins, acceptance flags, and elapsed time; they do not store image data.
+The models load once per tab. A generation counter stops a scan that finishes late from updating a different profile. Photos stay in tab memory. Dose logs store candidate IDs, scores, margins, whether each match was accepted, and timing, but never image data.
 
-Versioned state is stored under `pillcheck-v1`. Each profile has medications, dated self-reported logs, refill notes, and manual organizer marks. A taken record blocks another record for the same local date and period. A final scan-result check runs before logging. Storage events refresh other tabs, but simultaneous writes can still conflict. Use one entry tab.
+App state is versioned under the `pillcheck-v1` key. Each profile holds its medications, dated dose logs, refill notes and organizer marks. Only one taken record is allowed per date and dose time, and the scan result is checked again right before logging. Changes made in one tab show up in other open tabs through storage events.

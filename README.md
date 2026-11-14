@@ -1,69 +1,75 @@
 # PillCheck
 
-**Double-check every dose with one photo.** PillCheck finds separate pills and compares their appearances with saved bottle references. It marks uncertain matches instead of guessing.
+**Double-check every dose with one photo.** PillCheck finds each pill in a photo, recognizes it on your device, and checks it against the medicines planned for that dose. When it isn't confident, it says "Not sure" instead of guessing.
 
-Research prototype, not a medical device.
+PillCheck is a research prototype, not a medical device.
 
 ## Run
 
-Node.js 22 or newer:
+Requires Node.js 22 or newer.
 
 ```sh
 npm ci
 npm start
 ```
 
-Open **http://localhost:4173**. On Windows, double-click **Start PillCheck.cmd**; on macOS, double-click **Start PillCheck.command**. Use `PORT=4180 npm start` for another port.
+Open **http://localhost:4173**. On Windows you can double-click **Start PillCheck.cmd**, and on macOS **Start PillCheck.command**. Set `PORT=4180` to use another port.
 
-**Use a phone:** start the server with `HOST=0.0.0.0 npm start` and open `http://<this-computer's-IP>:4173` on the same Wi-Fi. Live camera access and PWA installation need HTTPS or `localhost`.
+**On a phone:** run `HOST=0.0.0.0 npm start` and open `http://<this-computer's-IP>:4173` on the same Wi-Fi. The live camera and installing the app need HTTPS or `localhost`.
 
-**No pills handy?** On the welcome screen choose **Try the demo**. It loads a sample profile and two research photos (a correct dose and a wrong pill) that run through the real on-device model.
+**No pills handy?** Choose **Try the demo** on the welcome screen. It loads a sample plan and two real photos, one correct dose and one wrong pill, and runs them through the same on-device model.
 
 ## How a scan works
 
-1. Open **Scan**, pick the dose time, and start the live camera or upload a photo. Live outlines are drawn in the browser.
-2. A small on-device network, the **pill finder** (`public/models/pill-finder.onnx`, 3.7 MB), outlines every pill in the photo and splits pills that touch. On plain, even surfaces a color-based detector adds anything it missed. Each pill is cropped and compared with the on-device reference model. Photos are not sent to a recognition service. The first scan downloads the model files; the service worker caches them for later use.
+1. Open **Scan**, pick the dose time, and point the camera at the pills or upload a photo.
+2. The **pill finder** (`public/models/pill-finder.onnx`, 3.7 MB) outlines every pill and splits pills that touch. On plain surfaces, a color-based detector picks up anything it missed.
+3. Each pill is cropped and compared with about 4,900 prescription pill types from the NIH ePillID library. Everything runs in the browser. Photos are never uploaded, and the model files are cached after the first scan so it works offline.
+4. PillCheck compares the recognized pills and the count with the medicines and quantities saved for that dose. A pill that isn't a confident match can be flipped and scanned on its other side, and both sides are combined.
 
-   The pill finder was trained on synthetic scenes (`vision/train_segmenter.py`): NIH pill cut-outs from ePillID placed on photos of marble, wood, counters, cloth, hands and paper, with shadows, uneven light, blur and distractors such as marble veins. It was checked by eye on 29 freely licensed real photos from Wikimedia Commons. It finds separated pills on wood, stone, paper and blister packs, white pills on gray paper, and touching pills. It still struggles with white pills on white surfaces, dense piles, and pills held in a hand. There is no labeled real-photo benchmark for it yet.
+Pills outside the library, including most store-brand and over-the-counter pills (Tylenol, ibuprofen, vitamins), are still found and outlined, but they're shown as "Not sure".
 
-   **Identification is limited to the reference library:** about 4,900 prescription pill types from the NIH ePillID set. Pills outside it, including most store-brand and over-the-counter pills (Tylenol, ibuprofen, vitamins), are found and outlined but always shown as "Not sure".
-3. PillCheck compares accepted reference matches and detected counts with the saved bottle NDCs and quantities. Low-confidence or unmatched results are marked uncertain. The model compares appearance; it does not read imprints.
+## Accuracy
 
-The shipped DINOv2 reference model was evaluated on 960 held-out ePillID photos: with each pill checked at four rotations, top-1 NDC retrieval was 73.0% (top-3 85.2%). A match is accepted only when the score, the gap to the runner-up and at least two rotations agree; 287 of 292 accepted matches were correct (**98.3%**). In a plan-check simulation, 0 of 960 wrong pills were falsely matched with random plans, and 5 of 960 (0.5%) in a worst case where the plan held each pill's closest look-alike. The remaining errors are mostly same-drug, different-strength pills whose only difference is a tiny imprint number. These are cropped research photos, not an end-to-end evaluation on household dose scenes; see [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md).
+**Recognition.** The DINOv2-based reference model was tested on 960 held-out ePillID photos. Its first guess was right 73.0% of the time and the right pill was in its top 3 85.2% of the time. A match is only accepted when the score, the lead over the runner-up, and at least two of four rotations all agree. 287 of the 292 accepted matches were correct (**98.3%**).
 
-**Checking against the plan, with a flip step.** The app's real question is narrower: is each pill one of the 2–3 medicines in this dose? Each pill is checked against the plan; pills that aren't a confident match are flipped and scanned on the other side, and both sides are combined. On 359 held-out pills with photos of both sides (gates tuned on one half, scored on the other), **67% of right pills were confirmed (34% from the first photo alone), 100% of confirmations were the correct medicine, 100% of random wrong pills were caught, and 96% of look-alike wrong pills were caught** (the plan holds the product the model finds most similar to the pill). Everything else is reported as "not sure". Scripts: `vision/plan_check.py`, `vision/two_sided.py`, `vision/flip_gate.py`. The sample is small, so treat these as approximate.
-## Interface
+**Checking against the plan.** In practice the question is narrower: is this pill one of the two or three medicines in this dose? On 359 held-out pills photographed on both sides, with thresholds tuned on one half and scored on the other:
 
-The UI is modelled on the patterns shared by the best-rated apps in this space, studied from their App Store screens: **Medisafe** (4.7★, 102K ratings), **MyTherapy** (4.8★), Apple Health Medications, the Apple Design Award winner **Streaks** (4.8★), **Duolingo** (4.7★, 5.5M ratings) and top medication-app concepts on Dribbble.
+- 67% of correct pills were confirmed (24% from the first photo alone), and every confirmation was the right medicine.
+- 100% of random wrong pills were caught.
+- 96% of look-alike wrong pills were caught, where the plan held the product the model finds most similar.
 
-- **Today:** large title, a week strip with a progress ring per day, a summary ring with a day streak (Streaks/Duolingo), and doses grouped by time of day with colored pill icons and round check circles (MyTherapy/Medisafe).
-- **Scan:** a camera viewfinder with corner brackets and a shutter button, a live step checklist while it works, then one big result card with a single next action.
-- **Medications and Settings:** iOS-style grouped lists. **History:** big-number stats and weekly bars. Forms open as bottom sheets.
-- **Navigation:** a bottom tab bar with a raised Scan button on phones, and a sidebar on tablets and desktops.
-- **Tactile buttons** with a raised bottom edge (Duolingo), iOS semantic colors in light and dark, 44 px+ touch targets, and a *Larger text* setting that scales everything.
-- **Visual language:** bold minimal on an Apple-style structure. White page, black type and one orange accent, giant numerals, a time-column schedule, a floating black **Scan a dose** button and one-word verdicts ("Match."). Pills are drawn as lit, glossy SVG renders in each medication's real color and shape; there is no stock emoji or clip art. The three directions considered are in [docs/design-directions.html](docs/design-directions.html). Icons are [Lucide](https://lucide.dev) (ISC); type is DM Sans and Manrope (SIL OFL).
+The remaining mistakes are mostly the same drug at a different strength, where the only visible difference is a small imprint number. These results come from cropped research photos. Full details are in [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md), and the scripts are `vision/plan_check.py`, `vision/two_sided.py` and `vision/flip_gate.py`.
 
-## Other working features
+**Pill finder.** The pill finder was trained on synthetic scenes (`vision/train_segmenter.py`): NIH pill cut-outs placed on photos of marble, wood, counters, cloth, hands and paper, with shadows, uneven light, blur and distractors. On 29 freely licensed real photos from Wikimedia Commons it found separated pills on wood, stone, paper and blister packs, white pills on gray paper, and touching pills. White pills on white surfaces, dense piles and pills held in a hand are still hard.
 
-- Separate local care profiles; add/edit/delete medication plans and appearance notes.
-- Live RxNorm name/NDC lookup, with manual label entry if unavailable.
-- Per-pill scan results with count and reference-NDC matching against the saved plan.
-- Manual 7×1, 7×2, and 7×4 organizer review, preparation notes, and refill-change notes.
-- Local caregiver view, self-reported logging history/trends, correction of mistaken records, and printable weekly reports. Use the system print dialog's **Save as PDF**.
-- Larger text, keyboard controls, and browser read-aloud guidance in English, Spanish, and Mandarin; visual UI remains English.
-- JSON backup export/import and reset.
+## Features
 
-Morning is 00:00–11:59, afternoon 12:00–16:59, evening 17:00–20:59, and bedtime 21:00–23:59 in device local time. These are broad prototype buckets, not prescription-specific exact times. Liquid, PRN, tapered, alternate-day, and fractional-pill regimens are unsupported.
+- **Today:** a week strip, a daily progress ring and streak, and doses grouped by time of day.
+- **Scan:** a camera viewfinder with live pill outlines and one clear result with a single next step.
+- **Medications:** add, edit and remove medicines, with live RxNorm lookup by name or NDC (or manual entry).
+- **Organizer review:** step through a 7×1, 7×2 or 7×4 weekly organizer one compartment at a time.
+- **History and reports:** logged doses, corrections, and a printable weekly report for a doctor or pharmacist (use the print dialog's **Save as PDF**).
+- **Profiles:** separate care profiles for each person, all stored locally.
+- **Accessibility:** a Larger text setting that scales everything, 44 px+ touch targets, light and dark themes, keyboard navigation, and read-aloud guidance in English, Spanish and Mandarin.
+- **Backup:** JSON export, import and reset.
 
-## What is still not implemented
+Dose times are grouped as morning (00:00–11:59), afternoon (12:00–16:59), evening (17:00–20:59) and bedtime (21:00–23:59) in local time. Liquid, as-needed, tapered, alternate-day and split-pill regimens aren't supported yet.
 
-Bottle barcode scanning; arbitrary organizer detection; an end-to-end accuracy study on real dose photos; validated look-alike sensitivity; remote caregiver accounts, sync, and alerts; native mobile packaging; clinical validation; and a conformal/clinical error guarantee. Phone hardware performance has not been formally measured.
+## Design
 
-## Data and privacy
+The layout borrows proven patterns from top-rated medication and habit apps such as Medisafe, MyTherapy, Apple Health and Streaks: a time-grouped Today list with check circles, progress rings, a camera-first scan screen, and grouped settings lists. The look is bold and minimal, with a white page, black type, one orange accent, large numerals and one-word verdicts ("Match."). Pills are drawn as SVG renders in each medication's real color and shape. Icons are [Lucide](https://lucide.dev) (ISC). Type is DM Sans and Manrope (SIL OFL).
 
-Plans and logs are stored unencrypted in browser localStorage. Export backups carefully. Pill photos are analyzed on the device and are not uploaded or saved. Optional medication lookup sends the entered name/NDC to NLM. PillCheck does not run analytics or tracking and has no remote patient database.
+## Privacy
 
-Logging is self-reported and does not prove swallowing. Historical schedule edits can change past chart denominators; dates before a newly added medication's start date are excluded. Use one active entry tab; localStorage is not a transactional multi-user database.
+Plans and logs are stored in the browser's localStorage, unencrypted, so keep exported backups somewhere safe. Pill photos are analyzed on the device and are never uploaded or saved. The optional medication lookup sends the name or NDC you type to the National Library of Medicine. There are no accounts, analytics or tracking.
+
+## Roadmap
+
+- Bottle barcode scanning
+- Reading pill imprints to separate strengths that look identical
+- An accuracy study on real photos of full doses taken at home
+- Shared caregiver accounts with sync and reminders
+- Native mobile apps
 
 ## Development
 
@@ -71,30 +77,31 @@ Logging is self-reported and does not prove swallowing. Historical schedule edit
 npm test
 ```
 
-GitHub Actions installs the pinned runtime dependency, runs the tests, and checks syntax. Tests cover detection, reference ranking, NDC matching, unknown/extra/wrong pills, quality flags, dose gating, schedules, backups, and serving. They do not establish clinical accuracy.
+GitHub Actions runs the tests and a syntax check on every push. The tests cover pill detection, reference ranking, NDC matching, unknown, extra and wrong pills, photo quality flags, dose rules, schedules, backups and the server.
 
-To reproduce model training, use Python 3.12, `vision/requirements-lock.txt`, the public ePillID release, the fixed split/seed, and the scripts described in [docs/MODEL_CARD.md](docs/MODEL_CARD.md). Python and dataset downloads are development-only.
+To reproduce training, use Python 3.12, `vision/requirements-lock.txt`, the public ePillID release and the fixed split in `models/split.json`. See [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md).
 
 ```text
-public/recognition.js       Retained browser ONNX inference (inactive in app)
-public/recognition-core.js  Live detector and retained model helpers
-public/models/             Trained weights, gallery, references, measured report
-public/examples/           Real held-out photos and synthetic scene provenance
-public/app.js              App UI and local care workflows
+public/app.js              App UI and care workflows
+public/core.js             Schedule and dose-record rules
+public/recognition-core.js Pill finder, color detector and plan matching
+public/recognition.js      Earlier single-pass browser inference (not used by the app)
+public/models/             Trained weights, reference gallery and evaluation report
+public/examples/           Demo photos and their sources
 public/icons.js            Lucide icon paths (generated by scripts/fetch_ui_assets.py)
-public/sw.js               Offline cache (app shell network-first, model cache-first)
-public/core.js             Schedule/record and legacy guided-review rules
+public/sw.js               Offline cache
 server.mjs                 Static server and RxNorm proxy
-analysis.mjs               Legacy detection-response parser tests
-vision/                    Training (train_finetune.py = v2), export checks, metadata scripts
-models/split.json          Exact image split used for training and evaluation
-tests/                     Logic, detector, inference, and server checks
+analysis.mjs               Detection-response parser used by the tests
+vision/                    Model training, export and evaluation scripts
+models/split.json          Exact train/calibration/test split
+tests/                     Logic, detector, model and server tests
+docs/                      Architecture, model card and licenses
 ```
 
 ## Attribution and license
 
-Reference data: [ePillID benchmark](https://github.com/usuyama/ePillID-benchmark), derived from NIH NLM Pillbox and the Pill Image Recognition Challenge. The dataset is released for research purposes. Reference images and trained artifacts are research materials; the app's MIT license does not override their original conditions. Public name metadata comes from the [openFDA NDC directory](https://open.fda.gov/apis/drug/ndc/) and [NLM RxNorm](https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html). Historical products may be discontinued; not every reference has an available name.
+Reference data: the [ePillID benchmark](https://github.com/usuyama/ePillID-benchmark), derived from NIH NLM Pillbox and the Pill Image Recognition Challenge and released for research use. The app's MIT license doesn't override the original terms of the reference images or the models trained on them. Medication names come from the [openFDA NDC directory](https://open.fda.gov/apis/drug/ndc/) and [NLM RxNorm](https://lhncbc.nlm.nih.gov/RxNav/APIs/RxNormAPIs.html). Some older reference products are discontinued, and not every one has a name on file.
 
 This product uses publicly available data from the U.S. National Library of Medicine (NLM), National Institutes of Health, Department of Health and Human Services; NLM is not responsible for the product and does not endorse or recommend this or any other product.
 
-Code: MIT. Fonts: SIL OFL. ONNX Runtime and pretrained encoder components retain their upstream licenses; DINOv2 is Apache 2.0. See `docs/` for notices.
+Code: MIT. Fonts: SIL OFL. ONNX Runtime and DINOv2 (Apache 2.0) keep their upstream licenses; see `docs/`.

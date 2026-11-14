@@ -1,7 +1,5 @@
-# Trained model artifacts
+# Model files
 
-Runtime weights, normalized gallery embeddings, reference atlases, offline public name metadata, and the measured evaluation report live in `public/models/`.
+The runtime weights, gallery embeddings, reference images, offline name data and evaluation report live in `public/models/`.
 
-`split.json` records the exact training/calibration/test image paths. PyTorch training checkpoints (`*.pt`) are local-only to avoid shipping duplicate weights. They are reproducible from the pinned training environment and scripts in `vision/`.
-
-The model is research software. Its similarity scores are not probabilities, its abstention gate does not guarantee clinical accuracy, and a matching result does not prove that a pill is safe or that it was swallowed.
+`split.json` records the exact training, calibration and test image paths. PyTorch checkpoints (`*.pt`) aren't committed, since the exported ONNX files are what the app uses. They can be rebuilt with the scripts in `vision/` and the pinned environment in `vision/requirements-lock.txt`. See [`docs/MODEL_CARD.md`](../docs/MODEL_CARD.md) for training details and results.

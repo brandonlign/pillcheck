@@ -11,7 +11,3 @@ __pycache__/
 *.pyc
 
 models/*.pt
-.opencode/nvidia-api-key
-
-/.claude/
-CLAUDE.md
